@@ -40,7 +40,9 @@ families:
     byol: {proj_dim: 256, hidden_dim: 2048, ema: 0.996}
 
 runtime:
-  num_workers: 8          # legacy: 4. Changes which worker draws which augmentation, not the protocol.
-  torch_threads: 4
+  # CPU budget per unit = num_workers + torch_threads. On the 64-core server with
+  # 2 GPUs x 3 units: 6 x (6 + 2) = 48 cores, leaving room for other users.
+  num_workers: 6          # legacy: 4. Changes which worker draws which augmentation, not the protocol.
+  torch_threads: 2
   save_encoder: true
   save_features: true
