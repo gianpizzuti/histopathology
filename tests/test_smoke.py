@@ -82,3 +82,22 @@ def test_launcher_and_aggregate(tiny_config, subprocess_env):
     assert "±" in (out / "summary.txt").read_text() and "auroc" in agg.stdout
     for m in METRICS:
         assert (out / "figures" / f"smoke_panda_{m}.pdf").stat().st_size > 1000
+
+
+def test_check_setup_end_to_end(tmp_path, tiny_config, subprocess_env):
+    """scripts/check_setup.py on the fake data (CPU): all five steps must pass."""
+    import yaml
+    cfg = yaml.safe_load(tiny_config.read_text())
+    cfg.update({"experiment": "check_test", "results_dir": str(tmp_path / "check_results")})
+    cfg["protocol"].update({"splits": [0], "seeds": [0], "max_ssl_steps": 12})
+    cfg["grid"] = {"datasets": ["pcam", "panda"], "methods": ["simclr", "byol"],
+                   "backbones": ["resnet18", "vit_tiny_test"]}
+    check_cfg = tmp_path / "check.yaml"
+    check_cfg.write_text(yaml.safe_dump(cfg))
+
+    res = subprocess.run([sys.executable, "scripts/check_setup.py", "--config", str(check_cfg),
+                          "--gpus", "0", "--per-gpu", "4", "--allow-cpu"],
+                         cwd=REPO, env=subprocess_env, capture_output=True, text=True)
+    assert res.returncode == 0, res.stdout[-4000:] + res.stderr[-4000:]
+    assert "ALL CHECKS PASSED" in res.stdout
+    assert "unit-hours" in res.stdout  # duration estimate printed

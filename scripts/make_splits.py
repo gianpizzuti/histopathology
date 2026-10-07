@@ -19,15 +19,8 @@ import pandas as pd
 from sslhist import data as D
 from sslhist.config import load_config, resolve
 from sslhist.io import frac_tag
+from sslhist.data import PAPER_TABLE1, class_counts
 from sslhist.utils import fingerprint
-
-# Class counts (class 0, class 1) reported in Table 1 of the CIBB 2026 paper
-# (sample_frac=0.2, val_ratio=0.2). A match confirms the same PANDA universe.
-PAPER_TABLE1 = {"panda": {"universe": (1055, 1068), "train": (844, 854), "val": (211, 214)}}
-
-
-def class_counts(y):
-    return int((y == 0).sum()), int((y == 1).sum())
 
 
 def main() -> int:

@@ -130,6 +130,7 @@ def pretrain_ssl(
     scaler = torch.amp.GradScaler("cuda", enabled=amp)
 
     history = {"epoch_loss": [], "epoch_time_s": [], "skipped_batches": 0, "steps": 0}
+    warmup_steps, t_warm, t_last = 10, None, None  # steady-state speed, without start-up costs
     model.train()
     for ep in range(1, epochs + 1):
         t0 = time.time()
@@ -157,6 +158,9 @@ def pretrain_ssl(
             total += float(loss.item()) * x1.size(0)
             n += x1.size(0)
             history["steps"] += 1
+            t_last = time.time()  # loss.item() above synchronizes with the GPU
+            if history["steps"] == warmup_steps:
+                t_warm = t_last
             if max_steps is not None and history["steps"] >= max_steps:
                 break
         dt = time.time() - t0
@@ -167,5 +171,9 @@ def pretrain_ssl(
         if max_steps is not None and history["steps"] >= max_steps:
             break
 
+    if t_warm is not None and history["steps"] > warmup_steps:
+        history["sec_per_step"] = (t_last - t_warm) / (history["steps"] - warmup_steps)
+    else:
+        history["sec_per_step"] = sum(history["epoch_time_s"]) / max(1, history["steps"])
     backbone = model[0] if method == "simclr" else model.online_encoder
     return backbone, history

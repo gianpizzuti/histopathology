@@ -1,0 +1,15 @@
+# Quick end-to-end check on the real data and GPUs, to run before launching E1
+# (scripts/check_setup.py). Same grid as E1 (both datasets, methods and backbones)
+# but 1 split x 1 seed and only a few SSL steps: it exercises every code path
+# (loading, pretraining, probes, saving, launcher, aggregation) in a few minutes.
+# Everything goes under artifacts/ (not committed); these numbers are NOT results.
+inherit: e1_vit_matched.yaml
+experiment: check
+results_dir: artifacts/check_results
+
+protocol:
+  splits: [0]
+  seeds: [0]
+  ssl_epochs: 1
+  max_ssl_steps: 60
+  probe_epochs: 2

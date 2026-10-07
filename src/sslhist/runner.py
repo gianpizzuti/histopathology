@@ -59,20 +59,22 @@ def run_unit(cfg: dict, unit: Unit, force: bool = False, timing_steps: Optional[
     backbone, hist = pretrain_ssl(
         unit.method, unit.backbone, ssl_ds, fam[unit.method],
         batch_size=int(fam["batch_ssl"]), epochs=int(prot["ssl_epochs"]), lr=float(prot["ssl_lr"]),
-        num_workers=nw, device=device, amp=amp, max_steps=timing_steps, log=log,
+        num_workers=nw, device=device, amp=amp,
+        # protocol.max_ssl_steps is only set by the quick check config (configs/check.yaml)
+        max_steps=timing_steps if timing_steps is not None else prot.get("max_ssl_steps"), log=log,
     )
     ssl_time = time.time() - t0
+    steps_per_epoch = len(ssl_ds) // int(fam["batch_ssl"])
+    peak_mem = lambda: torch.cuda.max_memory_allocated() / 1024 ** 3 if device.type == "cuda" else 0.0  # noqa: E731
 
     if timing_steps is not None:
-        steps_per_epoch = len(ssl_ds) // int(fam["batch_ssl"])
-        sec_per_step = ssl_time / max(1, hist["steps"])
         est = {
             "unit": unit.tag,
             "steps_measured": hist["steps"],
-            "sec_per_step": sec_per_step,
-            "est_epoch_min": steps_per_epoch * sec_per_step / 60,
-            "est_ssl_total_min": steps_per_epoch * sec_per_step * int(prot["ssl_epochs"]) / 60,
-            "peak_gpu_mem_gb": (torch.cuda.max_memory_allocated() / 1024 ** 3) if device.type == "cuda" else 0.0,
+            "sec_per_step": hist["sec_per_step"],
+            "est_epoch_min": steps_per_epoch * hist["sec_per_step"] / 60,
+            "est_ssl_total_min": steps_per_epoch * hist["sec_per_step"] * int(prot["ssl_epochs"]) / 60,
+            "peak_gpu_mem_gb": peak_mem(),
         }
         log(f"[TIMING] {est}")
         return est
@@ -116,7 +118,8 @@ def run_unit(cfg: dict, unit: Unit, force: bool = False, timing_steps: Optional[
             "run_seed": rs, "subset_seed": ss,
             "val_ids_fp": fingerprint(ids[va_idx]), "subset_ids_fp": fingerprint(ids[sub_idx]),
             "ssl_final_loss": hist["epoch_loss"][-1] if hist["epoch_loss"] else float("nan"),
-            "ssl_skipped_batches": hist["skipped_batches"], "ssl_time_s": round(ssl_time, 1),
+            "ssl_steps": hist["steps"], "ssl_skipped_batches": hist["skipped_batches"],
+            "ssl_time_s": round(ssl_time, 1),
         })
         ft = frac_tag(frac)
         probe_art[f"{ft}_subset_idx"] = sub_idx
@@ -143,7 +146,9 @@ def run_unit(cfg: dict, unit: Unit, force: bool = False, timing_steps: Optional[
 
     meta = run_metadata()
     write_json(art / "logs" / f"{unit.tag}.json", {
-        "unit": unit.tag, "ssl_history": hist, "ssl_time_s": ssl_time, "probe_time_s": probe_time, **meta,
+        "unit": unit.tag, "ssl_history": hist, "ssl_time_s": ssl_time, "probe_time_s": probe_time,
+        "steps_per_epoch": steps_per_epoch, "ssl_epochs": int(prot["ssl_epochs"]),
+        "peak_gpu_mem_gb": peak_mem(), "total_time_s": time.time() - t0, **meta,
     })
     # Result files are written last: a unit counts as complete only once everything is saved.
     for row in rows:

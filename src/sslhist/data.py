@@ -18,6 +18,16 @@ from torchvision import transforms
 
 UNIVERSE_SEED = 42
 
+# Class counts (class 0, class 1) reported in Table 1 of the CIBB 2026 paper for
+# sample_frac=0.2 and val_ratio=0.2; identical for every split (stratified).
+# A match confirms that the PANDA universe is the one of the conference runs.
+PAPER_TABLE1 = {"panda": {"universe": (1055, 1068), "train": (844, 854), "val": (211, 214)}}
+
+
+def class_counts(y) -> Tuple[int, int]:
+    y = np.asarray(y)
+    return int((y == 0).sum()), int((y == 1).sum())
+
 
 # -----------------------
 # Seed conventions (legacy)

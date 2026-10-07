@@ -8,7 +8,7 @@ notebooks are kept unchanged in `notebooks/legacy/`. New experiments use the
 ```
 configs/            base.yaml (conference protocol) + one YAML per experiment
 src/sslhist/        data, models, ssl (SimCLR/BYOL), probe, metrics, runner, report, plotting
-scripts/            run_unit.py · launch.py · aggregate.py · make_splits.py
+scripts/            check_setup.py · run_unit.py · launch.py · aggregate.py · make_splits.py
 tests/              protocol equivalence with the notebooks + CPU smoke tests
 results/lnbi/       committed: per-run JSON, summary CSV/LaTeX, PDF figures
 artifacts/          NOT committed: encoders, features, logs
@@ -62,14 +62,15 @@ python scripts/make_splits.py --config configs/e1_vit_matched.yaml --dataset pan
 ## Running an experiment (E1 as example)
 
 ```bash
-# 1. timing test: 200 SSL steps, prints the estimated duration of a full unit
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python scripts/run_unit.py --config configs/e1_vit_matched.yaml \
-    --dataset pcam --method simclr --backbone vit_b_16 --split 0 --seed 0 --timing 200
+# 1. quick check (a few minutes): environment, data (incl. PANDA vs Table 1 of the paper),
+#    the whole E1 grid with 1 split x 1 seed and 60 SSL steps per unit through the launcher,
+#    outputs and aggregation, plus an estimate of the full run. Writes only under artifacts/.
+python scripts/check_setup.py --gpus 2,3 --per-gpu 3
 
 # 2. whole grid on GPUs 2 and 3 (the ones we may use), 3 units per GPU (re-run the same command to resume).
-#    --gpus takes the ids shown by nvidia-smi: only those GPUs are used.
+#    --gpus takes the ids shown by nvidia-smi: only those GPUs are used. Run it inside tmux.
 python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 2,3 --per-gpu 3 --dry-run
-nohup python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 2,3 --per-gpu 3 > e1_launch.log 2>&1 &
+python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 2,3 --per-gpu 3 2>&1 | tee e1_launch.log
 
 # 3. tables, paired comparison vs ResNet-18, figures
 python scripts/aggregate.py --config configs/e1_vit_matched.yaml --reference resnet18
@@ -78,6 +79,13 @@ git add results/lnbi/e1_vit_matched && git commit -m "E1 results" && git push
 
 A *unit* is one SSL pretraining (dataset, method, backbone, split, seed) followed
 by the linear probes at 1/5/10% labels. Logs: `artifacts/<experiment>/logs/<unit>.log`.
+
+Single unit by hand (e.g. to debug), or a timing test of its first 200 SSL steps:
+
+```bash
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python scripts/run_unit.py --config configs/e1_vit_matched.yaml \
+    --dataset pcam --method simclr --backbone vit_b_16 --split 0 --seed 0 --timing 200
+```
 
 ## Outputs
 
