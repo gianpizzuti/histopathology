@@ -7,8 +7,8 @@ Units whose result files already exist are skipped, so the launcher can be
 stopped and started again at any time. Logs go to artifacts/<experiment>/logs/.
 
 Examples:
-  python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 0,1 --per-gpu 3 --dry-run
-  nohup python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 0,1 --per-gpu 3 > launch.log 2>&1 &
+  python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 2,3 --per-gpu 3 --dry-run
+  nohup python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 2,3 --per-gpu 3 > launch.log 2>&1 &
 """
 import argparse
 import itertools

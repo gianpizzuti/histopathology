@@ -7,7 +7,7 @@ Examples:
       --dataset pcam --method simclr --backbone vit_b_16 --split 0 --seed 0 --timing 200
 
   # full run (skipped if its result files already exist, unless --force)
-  CUDA_VISIBLE_DEVICES=0 python scripts/run_unit.py --config configs/e1_vit_matched.yaml \
+  CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python scripts/run_unit.py --config configs/e1_vit_matched.yaml \
       --dataset pcam --method simclr --backbone vit_b_16 --split 1 --seed 0
 """
 import argparse

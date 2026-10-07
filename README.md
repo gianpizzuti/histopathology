@@ -54,13 +54,13 @@ python scripts/make_splits.py --config configs/e1_vit_matched.yaml --dataset pan
 
 ```bash
 # 1. timing test: 200 SSL steps, prints the estimated duration of a full unit
-CUDA_VISIBLE_DEVICES=0 python scripts/run_unit.py --config configs/e1_vit_matched.yaml \
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python scripts/run_unit.py --config configs/e1_vit_matched.yaml \
     --dataset pcam --method simclr --backbone vit_b_16 --split 0 --seed 0 --timing 200
 
-# 2. whole grid on 2 GPUs, 3 units per GPU (re-run the same command to resume).
+# 2. whole grid on GPUs 2 and 3 (the ones we may use), 3 units per GPU (re-run the same command to resume).
 #    --gpus takes the ids shown by nvidia-smi: only those GPUs are used.
-python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 0,1 --per-gpu 3 --dry-run
-nohup python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 0,1 --per-gpu 3 > e1_launch.log 2>&1 &
+python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 2,3 --per-gpu 3 --dry-run
+nohup python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 2,3 --per-gpu 3 > e1_launch.log 2>&1 &
 
 # 3. tables, paired comparison vs ResNet-18, figures
 python scripts/aggregate.py --config configs/e1_vit_matched.yaml --reference resnet18
