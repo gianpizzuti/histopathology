@@ -3,7 +3,7 @@
 
 Examples:
   # timing test: 200 SSL steps, prints the estimated time of a full run
-  python scripts/run_unit.py --config configs/e1_vit_matched.yaml \
+  CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python scripts/run_unit.py --config configs/e1_vit_matched.yaml \
       --dataset pcam --method simclr --backbone vit_b_16 --split 0 --seed 0 --timing 200
 
   # full run (skipped if its result files already exist, unless --force)
