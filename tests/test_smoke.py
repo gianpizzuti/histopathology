@@ -57,13 +57,13 @@ def test_timing_mode_writes_nothing(tiny_config):
 def test_launcher_and_aggregate(tiny_config, subprocess_env):
     run = lambda *a: subprocess.run([sys.executable, *a], cwd=REPO, env=subprocess_env,  # noqa: E731
                                     capture_output=True, text=True)
-    common = ["--config", str(tiny_config), "--splits", "0,1", "--seeds", "0"]
+    common = ["--config", str(tiny_config), "--splits", "0,1", "--seeds", "0", "--gpus", "cpu"]
 
     dry = run("scripts/launch.py", *common, "--dry-run")
     assert dry.returncode == 0, dry.stderr
     assert "to run=4" in dry.stdout
 
-    res = run("scripts/launch.py", *common, "--gpus", "0", "--per-gpu", "2")
+    res = run("scripts/launch.py", *common, "--per-gpu", "2")
     assert res.returncode == 0, res.stdout + res.stderr
     again = run("scripts/launch.py", *common, "--dry-run")
     assert "to run=0" in again.stdout
@@ -96,8 +96,19 @@ def test_check_setup_end_to_end(tmp_path, tiny_config, subprocess_env):
     check_cfg.write_text(yaml.safe_dump(cfg))
 
     res = subprocess.run([sys.executable, "scripts/check_setup.py", "--config", str(check_cfg),
-                          "--gpus", "0", "--per-gpu", "4", "--allow-cpu"],
+                          "--gpus", "cpu", "--per-gpu", "4", "--allow-cpu"],
                          cwd=REPO, env=subprocess_env, capture_output=True, text=True)
     assert res.returncode == 0, res.stdout[-4000:] + res.stderr[-4000:]
     assert "ALL CHECKS PASSED" in res.stdout
     assert "unit-hours" in res.stdout  # duration estimate printed
+
+
+def test_gpu_must_be_chosen(subprocess_env):
+    """No script silently falls back to GPU 0 on the shared server."""
+    env = {k: v for k, v in subprocess_env.items() if k != "CUDA_VISIBLE_DEVICES"}
+    for script, extra in [("scripts/launch.py", []), ("scripts/check_setup.py", []),
+                          ("scripts/run_unit.py", ["--dataset", "pcam", "--method", "simclr", "--backbone",
+                                                   "resnet18", "--split", "0", "--seed", "0"])]:
+        res = subprocess.run([sys.executable, script, "--config", "configs/e1_vit_matched.yaml", *extra],
+                             cwd=REPO, env=env, capture_output=True, text=True)
+        assert res.returncode == 2 and "gpu" in res.stderr.lower(), (script, res.stderr)

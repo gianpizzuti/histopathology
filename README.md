@@ -18,7 +18,8 @@ notebooks/legacy/   conference notebooks (Kaggle)
 ## Setup (GPU server)
 
 Everything lives in one folder: code, data, the conda environment `hist`, caches and
-credentials. The environment only sees GPUs 2 and 3 (numbered as in `nvidia-smi`).
+credentials. GPUs are chosen when launching (`--gpus 2,3`, `--gpu 2`), numbered as in
+`nvidia-smi`; nothing is fixed in the environment.
 The server driver is CUDA 12.4: install a matching PyTorch build **before** the package
 (the default PyPI wheel may target a newer CUDA).
 
@@ -32,7 +33,7 @@ conda config --append envs_dirs $G/envs          # so that `conda activate hist`
 export CONDA_PKGS_DIRS=$G/.cache/conda-pkgs
 conda create -y -p $G/envs/hist python=3.11
 conda env config vars set -p $G/envs/hist \
-    CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2,3 \
+    CUDA_DEVICE_ORDER=PCI_BUS_ID \
     KAGGLE_CONFIG_DIR=$G/.kaggle TORCH_HOME=$G/.cache/torch \
     PIP_CACHE_DIR=$G/.cache/pip MPLCONFIGDIR=$G/.cache/matplotlib
 conda activate hist
@@ -41,8 +42,8 @@ cd $G/histopathology
 pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124
 pip install -e ".[dev]" kaggle
 python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.device_count(), torch.cuda.get_device_name(0))"
-# expected: 2.6.0+cu124 True 2 NVIDIA H100 NVL
-pytest -q            # 17 passed, ~2 min on CPU
+# expected: 2.6.0+cu124 True 4 NVIDIA H100 NVL
+pytest -q            # 17 passed, ~2 min; the tests never use a GPU
 ```
 
 Later sessions: `conda activate hist && cd /opt/scratch/labs/vap/gianluca/ssl-histo/histopathology`.
@@ -86,8 +87,8 @@ python scripts/make_splits.py --config configs/e1_vit_matched.yaml --dataset pan
 #    outputs and aggregation, plus an estimate of the full run. Writes only under artifacts/.
 python scripts/check_setup.py --gpus 2,3 --per-gpu 3
 
-# 2. whole grid on GPUs 2 and 3 (the ones we may use), 3 units per GPU (re-run the same command to resume).
-#    --gpus takes the ids shown by nvidia-smi: only those GPUs are used. Run it inside tmux.
+# 2. whole grid on GPUs 2 and 3, 3 units per GPU (re-run the same command to resume).
+#    --gpus (required) takes the ids shown by nvidia-smi: only those GPUs are used. Run it inside tmux.
 python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 2,3 --per-gpu 3 --dry-run
 python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 2,3 --per-gpu 3 2>&1 | tee e1_launch.log
 
@@ -102,7 +103,7 @@ by the linear probes at 1/5/10% labels. Logs: `artifacts/<experiment>/logs/<unit
 Single unit by hand (e.g. to debug), or a timing test of its first 200 SSL steps:
 
 ```bash
-CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2 python scripts/run_unit.py --config configs/e1_vit_matched.yaml \
+python scripts/run_unit.py --gpu 2 --config configs/e1_vit_matched.yaml \
     --dataset pcam --method simclr --backbone vit_b_16 --split 0 --seed 0 --timing 200
 ```
 

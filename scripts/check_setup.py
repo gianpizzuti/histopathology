@@ -13,7 +13,7 @@ Everything is written under artifacts/ (git-ignored) and deleted at the next che
 Takes a few minutes. Exit code 0 only if every check passed.
 
 Example:
-  python scripts/check_setup.py --gpus 2,3 --per-gpu 3
+  python scripts/check_setup.py --gpus 2,3 --per-gpu 3     # GPUs chosen at launch time
 """
 import argparse
 import json
@@ -56,16 +56,24 @@ def check_environment(cfg, gpus, per_gpu, allow_cpu):
     print(f"  python {sys.version.split()[0]} | torch {torch.__version__} (CUDA {torch.version.cuda})")
     if torch.cuda.is_available():
         names = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
-        ok(f"CUDA available, {len(names)} visible GPU(s): {', '.join(names)}")
+        if len(names) == len(gpus.split(",")):
+            ok(f"CUDA available, GPU(s) {gpus}: {', '.join(names)}")
+        else:
+            fail(f"--gpus {gpus} but only {len(names)} of them exist")
     elif allow_cpu:
         warn("CUDA not available: running on CPU (--allow-cpu)")
     else:
-        fail("CUDA not available: check the PyTorch build (README: cu124 wheel) and the driver")
-    print(f"  CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<unset>')} "
-          f"CUDA_DEVICE_ORDER={os.environ.get('CUDA_DEVICE_ORDER', '<unset>')}")
-    if os.environ.get("CUDA_DEVICE_ORDER") != "PCI_BUS_ID":
-        warn("CUDA_DEVICE_ORDER is not PCI_BUS_ID: launch.py sets it, but manual runs may use other GPUs")
+        fail(f"no usable GPU among --gpus {gpus}: check the ids (nvidia-smi), "
+             f"the PyTorch build (README: cu124 wheel) and the driver")
+    rt = cfg["runtime"]
+    n_gpus = 1 if gpus == "cpu" else len(gpus.split(","))
+    need = n_gpus * per_gpu * (int(rt["num_workers"]) + int(rt.get("torch_threads", 4)))
+    cores = os.cpu_count() or 1
+    msg = f"CPU: {cores} cores, the launcher will use about {need} ({n_gpus} GPU(s) x {per_gpu} units)"
+    (ok if need <= cores else warn)(msg)
 
+    if gpus == "cpu":
+        return
     try:
         out = subprocess.run(["nvidia-smi", "--query-gpu=index,name,memory.used,memory.total,utilization.gpu",
                               "--format=csv,noheader,nounits", "-i", gpus],
@@ -80,11 +88,6 @@ def check_environment(cfg, gpus, per_gpu, allow_cpu):
     except (FileNotFoundError, subprocess.TimeoutExpired):
         warn("nvidia-smi not available: cannot check the load of the GPUs")
 
-    rt = cfg["runtime"]
-    need = len(gpus.split(",")) * per_gpu * (int(rt["num_workers"]) + int(rt.get("torch_threads", 4)))
-    cores = os.cpu_count() or 1
-    msg = f"CPU: {cores} cores, the launcher will use about {need} ({len(gpus.split(','))} GPUs x {per_gpu} units)"
-    (ok if need <= cores else warn)(msg)
 
 
 def check_data(cfg):
@@ -222,11 +225,15 @@ def main() -> int:
     ap.add_argument("--config", default="configs/check.yaml", help="quick-check config")
     ap.add_argument("--target", default="configs/e1_vit_matched.yaml", help="experiment to estimate")
     ap.add_argument("--paths", default=None)
-    ap.add_argument("--gpus", default="2,3")
+    ap.add_argument("--gpus", required=True, help="GPU ids as shown by nvidia-smi, e.g. 2,3 ('cpu' for tests)")
     ap.add_argument("--per-gpu", type=int, default=3)
     ap.add_argument("--allow-cpu", action="store_true", help="for tests without a GPU")
     args = ap.parse_args()
 
+    # This process only looks at the chosen GPUs (numbered as in nvidia-smi); launch.py
+    # then gives each unit one of them.
+    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "" if args.gpus == "cpu" else args.gpus
     cfg = load_config(args.config, args.paths)
     check_environment(cfg, args.gpus, args.per_gpu, args.allow_cpu)
     check_data(cfg)

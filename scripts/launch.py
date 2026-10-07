@@ -44,7 +44,8 @@ def main() -> int:
     ap.add_argument("--backbones")
     ap.add_argument("--splits", help="comma list of ints (default: protocol.splits)")
     ap.add_argument("--seeds", help="comma list of ints (default: protocol.seeds)")
-    ap.add_argument("--gpus", default="0", help="comma list of GPU ids as shown by nvidia-smi, e.g. 2,3")
+    ap.add_argument("--gpus", required=True,
+                    help="comma list of GPU ids as shown by nvidia-smi, e.g. 2,3 ('cpu': no GPU, for tests)")
     ap.add_argument("--per-gpu", type=int, default=1, help="units running at the same time on each GPU")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
@@ -69,7 +70,8 @@ def main() -> int:
 
     log_dir = exp_artifacts_dir(cfg) / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    free_slots = [g for g in csv_list(args.gpus) for _ in range(args.per_gpu)]
+    gpu_ids = [""] if args.gpus == "cpu" else csv_list(args.gpus)  # "" hides every GPU
+    free_slots = [g for g in gpu_ids for _ in range(args.per_gpu)]
     threads = str(cfg["runtime"].get("torch_threads", 4))
     running, failed, ok = {}, [], []
 
@@ -99,7 +101,7 @@ def main() -> int:
             logf = open(log_dir / f"{u.tag}.log", "a")
             p = subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, env=env, cwd=REPO_ROOT)
             running[p] = (u, gpu, time.time(), logf)
-            print(f"[launch] start {u.tag} on GPU {gpu} (pid {p.pid})", flush=True)
+            print(f"[launch] start {u.tag} on {'GPU ' + gpu if gpu else 'CPU'} (pid {p.pid})", flush=True)
 
         time.sleep(5)
         for p in [p for p in running if p.poll() is not None]:

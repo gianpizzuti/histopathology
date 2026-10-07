@@ -8,6 +8,10 @@ import pytest
 import yaml
 from PIL import Image
 
+# Tests never use a GPU, also on the shared server: hide every GPU from this process
+# and from the scripts it starts (set before torch initialises CUDA).
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
