@@ -19,6 +19,7 @@ from sslhist.runner import run_unit
     Unit("pcam", "simclr", "vit_tiny_test", 0, 0),
     Unit("pcam", "byol", "resnet18", 1, 2),
     Unit("panda", "byol", "vit_tiny_test", 2, 1),
+    Unit("panda", "simclr", "resnet50", 0, 1),  # E2 backbone
 ])
 def test_run_unit_writes_results_and_artifacts(tiny_config, unit):
     cfg = load_config(str(tiny_config))

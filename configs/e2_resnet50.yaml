@@ -1,0 +1,11 @@
+# E2 - ResNet-50 backbone (Reviewer 2, item 2): SimCLR + BYOL pretraining on PCam and
+# PANDA, then n=9 linear probes at 1/5/10% labels. Same protocol as ResNet-18 (resnet
+# family in base.yaml: image size, batch 128, projection heads, 10 epochs); ResNet-18 and
+# ViT-B/16 on the same splits are in e1_vit_matched.
+inherit: base.yaml
+experiment: e2_resnet50
+
+grid:
+  datasets: [pcam, panda]
+  methods: [simclr, byol]
+  backbones: [resnet50]
