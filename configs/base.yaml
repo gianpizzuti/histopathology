@@ -1,0 +1,46 @@
+# Protocol of the conference paper, as implemented in notebooks/legacy/01-05.
+# Experiment configs inherit from this file and override only what they change.
+
+results_dir: results/lnbi   # committed: per-run JSON, summaries, figures
+artifacts_dir: artifacts    # NOT committed: encoders, features, logs
+
+data:
+  # Fraction of each dataset used as the "universe" (df.sample(frac, random_state=42)).
+  # The conference runs used 0.2 for both; changing it changes every split.
+  sample_frac: {pcam: 0.2, panda: 0.2}
+  # Machine-specific paths (pcam_root, panda_train_csv, panda_images_dir) are read
+  # from configs/paths.yaml; see configs/paths.example.yaml.
+
+protocol:
+  splits: [0, 1, 2]
+  seeds: [0, 1, 2]
+  split_base_seed: 1000
+  val_ratio: 0.2
+  label_fracs: [0.01, 0.05, 0.10]
+  ssl_epochs: 10
+  ssl_lr: 1.0e-3          # Adam, no weight decay
+  probe_epochs: 10
+  probe_lr: 1.0e-4        # AdamW, weight decay 1e-4
+  probe_batch: 256
+  amp: true               # fp16 autocast + GradScaler
+
+# Per-architecture settings (selected from the backbone name prefix).
+families:
+  resnet:
+    img_size: {pcam: 96, panda: 224}
+    batch_ssl: 128
+    batch_sup: 128
+    simclr: {proj_dim: 128, hidden_dim: 2048}
+    byol: {proj_dim: 256, hidden_dim: 4096, ema: 0.996}
+  vit:
+    img_size: {pcam: 224, panda: 224}
+    batch_ssl: 16         # legacy fell back to smaller batches on OOM; here it is fixed
+    batch_sup: 32
+    simclr: {proj_dim: 128, hidden_dim: 1024}
+    byol: {proj_dim: 256, hidden_dim: 2048, ema: 0.996}
+
+runtime:
+  num_workers: 8          # legacy: 4. Changes which worker draws which augmentation, not the protocol.
+  torch_threads: 4
+  save_encoder: true
+  save_features: true

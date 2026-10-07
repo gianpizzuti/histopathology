@@ -1,0 +1,10 @@
+# E1 - ViT-B/16 with the same protocol as ResNet-18 (3 splits x 3 seeds = 9 runs).
+# ResNet-18 is re-run in the same environment so that the comparison is paired
+# (same splits, seeds and labelled subsets) and free of hardware/library effects.
+inherit: base.yaml
+experiment: e1_vit_matched
+
+grid:
+  datasets: [pcam, panda]
+  methods: [simclr, byol]
+  backbones: [vit_b_16, resnet18]
