@@ -5,7 +5,7 @@
   results/lnbi/<experiment>/summary.csv        mean, std (ddof=1), n per setting
   results/lnbi/<experiment>/summary.tex        same, as a LaTeX booktabs table
   results/lnbi/<experiment>/paired_vs_<ref>.csv  paired differences vs a reference backbone
-  results/lnbi/<experiment>/figures/*.pdf
+  results/lnbi/<experiment>/figures/<experiment>_<dataset>_<metric>.pdf  (camera-ready style)
 
 Example:
   python scripts/aggregate.py --config configs/e1_vit_matched.yaml --reference resnet18
@@ -17,7 +17,8 @@ import pandas as pd
 
 from sslhist.config import load_config
 from sslhist.io import exp_results_dir, load_legacy_csv, load_raw
-from sslhist.plotting import plot_metrics_vs_fraction
+from sslhist.metrics import METRICS
+from sslhist.plotting import plot_label_efficiency
 from sslhist.report import check_completeness, paired_comparison, summarize, to_latex
 
 
@@ -55,8 +56,9 @@ def main() -> int:
     figs = out / "figures"
     figs.mkdir(exist_ok=True)
     cur = summary[summary.experiment == cfg["experiment"]]
-    plot_metrics_vs_fraction(cur, ["auroc", "ece"], figs / f"{cfg['experiment']}_auroc_ece.pdf")
-    plot_metrics_vs_fraction(cur, ["accuracy", "f1", "brier"], figs / f"{cfg['experiment']}_acc_f1_brier.pdf")
+    for ds in sorted(cur["dataset"].unique()):
+        for m in METRICS:
+            plot_label_efficiency(cur, ds, m, figs / f"{cfg['experiment']}_{ds}_{m}.pdf")
 
     print(f"[aggregate] {len(raw)} rows -> {out}")
     return 0

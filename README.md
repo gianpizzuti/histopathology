@@ -32,7 +32,14 @@ pytest -q            # ~1 min on CPU
 
 Use **the same Kaggle datasets as the conference runs**: the universe
 (`df.sample(frac=0.2, random_state=42)`) and therefore every split depend on
-the rows of the CSV files and on which PANDA PNGs exist.
+the rows of the CSV files and on which PANDA PNGs exist. The Kaggle metadata of
+the legacy notebooks lists the inputs that were attached:
+
+| Kaggle source (notebook metadata) | Dataset |
+|---|---|
+| competition 11848 (data bundle 862157) | `histopathologic-cancer-detection` (PCam) |
+| competition 18647 (data bundle 1126921) | `prostate-cancer-grade-assessment` (PANDA, only `train.csv` is used) |
+| dataset id 615046 (version 1101206) | resized PANDA PNGs, `train_images/train_images/<image_id>.png` (name to confirm from the Kaggle notebook's *Input* panel) |
 
 ```bash
 pip install kaggle   # needs ~/.kaggle/kaggle.json and the competition rules accepted
@@ -43,7 +50,9 @@ kaggle datasets download -d <resized-panda-dataset-used-in-the-paper> -p /data/p
 cp configs/paths.example.yaml configs/paths.yaml   # and edit the three paths
 ```
 
-Check the data partition (and compare the printed fingerprints across machines):
+Check the data partition (and compare the printed fingerprints across machines).
+For PANDA the script also checks the class counts against Table 1 of the paper
+(universe 1055/1068, every split 844/854 train and 211/214 val):
 
 ```bash
 python scripts/make_splits.py --config configs/e1_vit_matched.yaml --dataset pcam
@@ -79,7 +88,7 @@ by the linear probes at 1/5/10% labels. Logs: `artifacts/<experiment>/logs/<unit
 - `all_runs.csv`, `summary.csv` (mean, std with ddof=1, n), `summary.tex`
 - `paired_vs_<ref>.csv`: per-setting mean ± std of the paired difference vs a reference
   backbone (same split, seed and labelled subset) and Wilcoxon signed-rank p-value
-- `figures/*.pdf`
+- `figures/<experiment>_<dataset>_<metric>.pdf`, in the style of the camera-ready figures
 
 `artifacts/<experiment>/`: `encoders/<unit>.pt` (backbone state dict),
 `features/<unit>.npz` (fp16 features of the full train part and of val, the labelled

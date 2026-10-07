@@ -21,6 +21,14 @@ from sslhist.config import load_config, resolve
 from sslhist.io import frac_tag
 from sslhist.utils import fingerprint
 
+# Class counts (class 0, class 1) reported in Table 1 of the CIBB 2026 paper
+# (sample_frac=0.2, val_ratio=0.2). A match confirms the same PANDA universe.
+PAPER_TABLE1 = {"panda": {"universe": (1055, 1068), "train": (844, 854), "val": (211, 214)}}
+
+
+def class_counts(y):
+    return int((y == 0).sum()), int((y == 1).sum())
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -34,14 +42,23 @@ def main() -> int:
     ds = D.load_datasource(args.dataset, cfg["data"])
     labels, ids = ds.labels_all(), np.asarray(ds.ids)
     table = pd.DataFrame({"id": ids, "label": labels})
-    print(f"[{args.dataset}] universe n={len(ds)} positives={labels.mean():.3f} fp={fingerprint(ids)}")
+    print(f"[{args.dataset}] universe n={len(ds)} class0/1={class_counts(labels)} fp={fingerprint(ids)}")
+    ref = PAPER_TABLE1.get(args.dataset) if cfg["data"]["sample_frac"][args.dataset] == 0.2 else None
+    mismatches = []
+    if ref and class_counts(labels) != ref["universe"]:
+        mismatches.append(f"universe {class_counts(labels)} != paper {ref['universe']}")
 
     for s in prot["splits"]:
         tr, va = D.make_split(labels, s, prot["val_ratio"], prot["split_base_seed"])
         col = np.full(len(ds), "", dtype=object)
         col[tr], col[va] = "train", "val"
         table[f"split{s}"] = col
-        print(f"  split {s}: n_tr={len(tr)} n_va={len(va)} val_fp={fingerprint(ids[va])}")
+        print(f"  split {s}: train class0/1={class_counts(labels[tr])} val class0/1={class_counts(labels[va])} "
+              f"val_fp={fingerprint(ids[va])}")
+        if ref:
+            for part, idx in [("train", tr), ("val", va)]:
+                if class_counts(labels[idx]) != ref[part]:
+                    mismatches.append(f"split {s} {part} {class_counts(labels[idx])} != paper {ref[part]}")
         for k in prot["seeds"]:
             for f in prot["label_fracs"]:
                 sub = D.label_subset(tr, labels, f, D.subset_seed(s, k))
@@ -54,6 +71,11 @@ def main() -> int:
     path = out / f"{args.dataset}_splits.csv.gz"
     table.to_csv(path, index=False)
     print(f"Saved {path}")
+    if ref:
+        if mismatches:
+            print("[CHECK] MISMATCH with the paper (Table 1):\n  " + "\n  ".join(mismatches))
+            return 1
+        print("[CHECK] class counts match Table 1 of the paper")
     return 0
 
 

@@ -9,5 +9,6 @@ pcam_root: /data/histopathologic-cancer-detection
 # Kaggle competition "prostate-cancer-grade-assessment": only train.csv is needed
 panda_train_csv: /data/prostate-cancer-grade-assessment/train.csv
 
-# Resized PANDA dataset used in the conference runs: folder with <image_id>.png
+# Resized PANDA dataset used in the conference runs (Kaggle dataset id 615046, version 1101206):
+# folder with <image_id>.png. scripts/make_splits.py --dataset panda checks it against the paper.
 panda_images_dir: /data/panda-resized/train_images/train_images
