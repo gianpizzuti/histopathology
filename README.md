@@ -17,16 +17,35 @@ notebooks/legacy/   conference notebooks (Kaggle)
 
 ## Setup (GPU server)
 
+Everything lives in one folder: code, data, the conda environment `hist`, caches and
+credentials. The environment only sees GPUs 2 and 3 (numbered as in `nvidia-smi`).
 The server driver is CUDA 12.4: install a matching PyTorch build **before** the package
 (the default PyPI wheel may target a newer CUDA).
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+G=/opt/scratch/labs/vap/gianluca/ssl-histo
+mkdir -p $G/data $G/envs $G/.kaggle $G/.cache && cd $G
+git clone -b claude/experiment-package-extensions-1nwg8n https://github.com/gianpizzuti/histopathology.git
+
+# conda environment "hist", stored in $G/envs (other environments are not touched)
+conda config --append envs_dirs $G/envs          # so that `conda activate hist` finds it
+export CONDA_PKGS_DIRS=$G/.cache/conda-pkgs
+conda create -y -p $G/envs/hist python=3.11
+conda env config vars set -p $G/envs/hist \
+    CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=2,3 \
+    KAGGLE_CONFIG_DIR=$G/.kaggle TORCH_HOME=$G/.cache/torch \
+    PIP_CACHE_DIR=$G/.cache/pip MPLCONFIGDIR=$G/.cache/matplotlib
+conda activate hist
+
+cd $G/histopathology
 pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124
-pip install -e ".[dev]"
-python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.device_count())"
-pytest -q            # ~1 min on CPU
+pip install -e ".[dev]" kaggle
+python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.device_count(), torch.cuda.get_device_name(0))"
+# expected: 2.6.0+cu124 True 2 NVIDIA H100 NVL
+pytest -q            # 17 passed, ~2 min on CPU
 ```
+
+Later sessions: `conda activate hist && cd /opt/scratch/labs/vap/gianluca/ssl-histo/histopathology`.
 
 ## Data
 
@@ -42,12 +61,12 @@ the legacy notebooks lists the inputs that were attached:
 | dataset id 615046 (version 1101206) | `xhlulu/panda-resized-train-data-512x512`: one 512×512 PNG per slide in `train_images/train_images/<image_id>.png` |
 
 ```bash
-pip install kaggle   # needs ~/.kaggle/kaggle.json and the competition rules accepted
-kaggle competitions download -c histopathologic-cancer-detection -p /data/histopathologic-cancer-detection
-kaggle competitions download -c prostate-cancer-grade-assessment -f train.csv -p /data/prostate-cancer-grade-assessment
-kaggle datasets download -d xhlulu/panda-resized-train-data-512x512 -p /data/panda-resized
+# needs $G/.kaggle/kaggle.json (chmod 600) and the competition rules accepted on kaggle.com
+kaggle competitions download -c histopathologic-cancer-detection -p $G/data/histopathologic-cancer-detection
+kaggle competitions download -c prostate-cancer-grade-assessment -f train.csv -p $G/data/prostate-cancer-grade-assessment
+kaggle datasets download -d xhlulu/panda-resized-train-data-512x512 -p $G/data/panda-resized
 # unzip the archives, then:
-cp configs/paths.example.yaml configs/paths.yaml   # and edit the three paths
+cp configs/paths.example.yaml configs/paths.yaml   # paths already set for the server layout above; check them with ls
 ```
 
 Check the data partition (and compare the printed fingerprints across machines).

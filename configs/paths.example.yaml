@@ -4,12 +4,12 @@
 # PANDA PNGs exist.
 
 # Kaggle competition "histopathologic-cancer-detection": contains train_labels.csv and train/*.tif
-pcam_root: /data/histopathologic-cancer-detection
+pcam_root: /opt/scratch/labs/vap/gianluca/ssl-histo/data/histopathologic-cancer-detection
 
 # Kaggle competition "prostate-cancer-grade-assessment": only train.csv is needed
-panda_train_csv: /data/prostate-cancer-grade-assessment/train.csv
+panda_train_csv: /opt/scratch/labs/vap/gianluca/ssl-histo/data/prostate-cancer-grade-assessment/train.csv
 
 # Resized PANDA dataset used in the conference runs: Kaggle xhlulu/panda-resized-train-data-512x512
 # (dataset id 615046, version 1101206):
 # folder with <image_id>.png. scripts/make_splits.py --dataset panda checks it against the paper.
-panda_images_dir: /data/panda-resized/train_images/train_images
+panda_images_dir: /opt/scratch/labs/vap/gianluca/ssl-histo/data/panda-resized/train_images/train_images
