@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """Run a grid of units on a few GPUs, several units per GPU at the same time.
 
-Each unit runs in its own process with ``CUDA_VISIBLE_DEVICES`` set to one GPU.
+Each unit runs in its own process with ``CUDA_VISIBLE_DEVICES`` set to one of the
+GPUs given with --gpus (ids as in nvidia-smi); no other GPU is touched.
 Units whose result files already exist are skipped, so the launcher can be
 stopped and started again at any time. Logs go to artifacts/<experiment>/logs/.
 
@@ -43,7 +44,7 @@ def main() -> int:
     ap.add_argument("--backbones")
     ap.add_argument("--splits", help="comma list of ints (default: protocol.splits)")
     ap.add_argument("--seeds", help="comma list of ints (default: protocol.seeds)")
-    ap.add_argument("--gpus", default="0", help="comma list of GPU ids, e.g. 0,1")
+    ap.add_argument("--gpus", default="0", help="comma list of GPU ids as shown by nvidia-smi, e.g. 2,3")
     ap.add_argument("--per-gpu", type=int, default=1, help="units running at the same time on each GPU")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
@@ -91,7 +92,9 @@ def main() -> int:
                 cmd += ["--paths", args.paths]
             if args.force:
                 cmd.append("--force")
-            env = {**os.environ, "CUDA_VISIBLE_DEVICES": gpu, "OMP_NUM_THREADS": threads,
+            # PCI_BUS_ID: GPU ids are the same as in nvidia-smi (CUDA's default order may differ)
+            env = {**os.environ, "CUDA_DEVICE_ORDER": "PCI_BUS_ID", "CUDA_VISIBLE_DEVICES": gpu,
+                   "OMP_NUM_THREADS": threads,
                    "MKL_NUM_THREADS": threads, "PYTHONUNBUFFERED": "1"}
             logf = open(log_dir / f"{u.tag}.log", "a")
             p = subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, env=env, cwd=REPO_ROOT)

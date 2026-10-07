@@ -57,7 +57,8 @@ python scripts/make_splits.py --config configs/e1_vit_matched.yaml --dataset pan
 CUDA_VISIBLE_DEVICES=0 python scripts/run_unit.py --config configs/e1_vit_matched.yaml \
     --dataset pcam --method simclr --backbone vit_b_16 --split 0 --seed 0 --timing 200
 
-# 2. whole grid on 2 GPUs, 3 units per GPU (re-run the same command to resume)
+# 2. whole grid on 2 GPUs, 3 units per GPU (re-run the same command to resume).
+#    --gpus takes the ids shown by nvidia-smi: only those GPUs are used.
 python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 0,1 --per-gpu 3 --dry-run
 nohup python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 0,1 --per-gpu 3 > e1_launch.log 2>&1 &
 
