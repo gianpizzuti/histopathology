@@ -4,6 +4,7 @@
   results/lnbi/<experiment>/all_runs.csv       every run, one row per label fraction
   results/lnbi/<experiment>/summary.csv        mean, std (ddof=1), n per setting
   results/lnbi/<experiment>/summary.tex        same, as a LaTeX booktabs table
+  results/lnbi/<experiment>/summary.txt        same, as a plain-text table (also printed)
   results/lnbi/<experiment>/paired_vs_<ref>.csv  paired differences vs a reference backbone
   results/lnbi/<experiment>/figures/<experiment>_<dataset>_<metric>.pdf  (camera-ready style)
 
@@ -20,6 +21,15 @@ from sslhist.io import exp_results_dir, load_legacy_csv, load_raw
 from sslhist.metrics import METRICS
 from sslhist.plotting import plot_label_efficiency
 from sslhist.report import check_completeness, paired_comparison, summarize, to_latex
+
+
+def readable_table(summary: pd.DataFrame) -> str:
+    """Plain-text mean +/- std table, for the terminal and summary.txt."""
+    t = summary[["dataset", "backbone", "method", "label_frac", "n_runs"]].copy()
+    t["label_frac"] = t["label_frac"].map(lambda f: f"{f * 100:g}%")
+    for m in METRICS:
+        t[m] = [f"{a:.4f} ± {b:.4f}" for a, b in zip(summary[f"{m}_mean"], summary[f"{m}_std"])]
+    return t.to_string(index=False)
 
 
 def main() -> int:
@@ -53,9 +63,13 @@ def main() -> int:
         paired = paired_comparison(raw[raw.experiment == cfg["experiment"]], args.reference)
         paired.to_csv(out / f"paired_vs_{args.reference}.csv", index=False)
 
+    cur = summary[summary.experiment == cfg["experiment"]]
+    table = readable_table(cur)
+    (out / "summary.txt").write_text(table + "\n")
+    print(table)
+
     figs = out / "figures"
     figs.mkdir(exist_ok=True)
-    cur = summary[summary.experiment == cfg["experiment"]]
     for ds in sorted(cur["dataset"].unique()):
         for m in METRICS:
             plot_label_efficiency(cur, ds, m, figs / f"{cfg['experiment']}_{ds}_{m}.pdf")

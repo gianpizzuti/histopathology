@@ -79,5 +79,6 @@ def test_launcher_and_aggregate(tiny_config, subprocess_env):
     paired = pd.read_csv(out / "paired_vs_resnet18.csv")
     assert set(paired["backbone"]) == {"vit_tiny_test"} and (paired["n_pairs"] == 2).all()
     assert "\\toprule" in (out / "summary.tex").read_text()
+    assert "±" in (out / "summary.txt").read_text() and "auroc" in agg.stdout
     for m in METRICS:
         assert (out / "figures" / f"smoke_panda_{m}.pdf").stat().st_size > 1000

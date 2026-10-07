@@ -85,7 +85,7 @@ by the linear probes at 1/5/10% labels. Logs: `artifacts/<experiment>/logs/<unit
 - `raw/<dataset>__<method>__<backbone>__split<s>__seed<k>__frac<pp>.json`: one file per run with
   split, seed, method, backbone, label fraction, AUROC, accuracy, F1, ECE, Brier, plus
   hyperparameters, split fingerprints, git commit, GPU and timing
-- `all_runs.csv`, `summary.csv` (mean, std with ddof=1, n), `summary.tex`
+- `all_runs.csv`, `summary.csv` (mean, std with ddof=1, n), `summary.tex`, `summary.txt` (readable table, also printed by `aggregate.py`)
 - `paired_vs_<ref>.csv`: per-setting mean ± std of the paired difference vs a reference
   backbone (same split, seed and labelled subset) and Wilcoxon signed-rank p-value
 - `figures/<experiment>_<dataset>_<metric>.pdf`, in the style of the camera-ready figures
