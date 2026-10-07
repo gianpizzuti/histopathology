@@ -8,7 +8,7 @@ notebooks are kept unchanged in `notebooks/legacy/`. New experiments use the
 ```
 configs/            base.yaml (conference protocol) + one YAML per experiment
 src/sslhist/        data, models, ssl (SimCLR/BYOL), probe, metrics, runner, report, plotting
-scripts/            check_setup.py · run_unit.py · launch.py · aggregate.py · make_splits.py
+scripts/            check_setup.py · run_unit.py · launch.py · status.py · aggregate.py · make_splits.py
 tests/              protocol equivalence with the notebooks + CPU smoke tests
 results/lnbi/       committed: per-run JSON, summary CSV/LaTeX, PDF figures
 artifacts/          NOT committed: encoders, features, logs
@@ -91,6 +91,10 @@ python scripts/check_setup.py --gpus 2,3 --per-gpu 3
 #    --gpus (required) takes the ids shown by nvidia-smi: only those GPUs are used. Run it inside tmux.
 python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 2,3 --per-gpu 3 --dry-run
 python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 2,3 --per-gpu 3 2>&1 | tee e1_launch.log
+
+#    Progress at any time (units done, epoch of the running ones, failures, time left):
+python scripts/status.py --config configs/e1_vit_matched.yaml
+watch -n 60 python scripts/status.py --config configs/e1_vit_matched.yaml   # refreshes every minute
 
 # 3. tables, paired comparison vs ResNet-18, figures
 python scripts/aggregate.py --config configs/e1_vit_matched.yaml --reference resnet18

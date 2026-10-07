@@ -69,6 +69,10 @@ def test_launcher_and_aggregate(tiny_config, subprocess_env):
     again = run("scripts/launch.py", *common, "--dry-run")
     assert "to run=0" in again.stdout
 
+    status = run("scripts/status.py", "--config", str(tiny_config))
+    assert status.returncode == 0, status.stderr
+    assert "complete 4/18 units (12 result files)" in status.stdout  # grid: 2 backbones x 3 splits x 3 seeds
+
     agg = run("scripts/aggregate.py", "--config", str(tiny_config), "--reference", "resnet18")
     assert agg.returncode == 0, agg.stdout + agg.stderr
 
@@ -113,3 +117,20 @@ def test_gpu_must_be_chosen(subprocess_env):
         res = subprocess.run([sys.executable, script, "--config", "configs/e1_vit_matched.yaml", *extra],
                              cwd=REPO, env=env, capture_output=True, text=True)
         assert res.returncode == 2 and "gpu" in res.stderr.lower(), (script, res.stderr)
+
+
+def test_status_parses_unit_logs():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("status", REPO / "scripts" / "status.py")
+    status = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(status)
+    run = "[RUN] pcam__byol__vit_b_16__split0__seed0 img=224\n"
+    ep = "[byol/vit_b_16] ep {}/10 loss=0.5000 time=200.0s (160 samples/s)\n"
+    info = status.parse_log(run + ep.format(1) + ep.format(2) + ep.format(3))
+    assert info["state"] == "running" and info["epoch"] == 3 and info["phase"] == "SSL pretraining"
+    assert status.parse_log(run + ep.format(2) + "Traceback (most recent call last):\nRuntimeError: boom\n") == \
+        {"state": "failed", "error": "RuntimeError: boom"}
+    # relaunched after a failure: only the part after the last [RUN] counts
+    relaunched = run + "Traceback (most recent call last):\nRuntimeError: boom\n" + run + ep.format(1)
+    assert status.parse_log(relaunched)["state"] == "running"
+    assert status.parse_log(run + ep.format(10) + "  [PROBE] frac=0.01\n")["phase"] == "probes / saving"

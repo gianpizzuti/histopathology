@@ -111,8 +111,9 @@ def main() -> int:
             mins = (time.time() - t0) / 60
             if p.returncode == 0:
                 ok.append(u)
-                print(f"[launch] done  {u.tag} in {mins:.1f} min | remaining={len(todo)} running={len(running)}",
-                      flush=True)
+                total = len(ok) + len(failed) + len(todo) + len(running)
+                print(f"[launch] done  {u.tag} in {mins:.1f} min | completed {len(ok)}/{total} "
+                      f"| waiting={len(todo)} running={len(running)}", flush=True)
             else:
                 failed.append(u)
                 print(f"[launch] FAIL  {u.tag} (exit {p.returncode}) see {log_dir / (u.tag + '.log')}", flush=True)
