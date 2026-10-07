@@ -39,13 +39,13 @@ the legacy notebooks lists the inputs that were attached:
 |---|---|
 | competition 11848 (data bundle 862157) | `histopathologic-cancer-detection` (PCam) |
 | competition 18647 (data bundle 1126921) | `prostate-cancer-grade-assessment` (PANDA, only `train.csv` is used) |
-| dataset id 615046 (version 1101206) | resized PANDA PNGs, `train_images/train_images/<image_id>.png` (name to confirm from the Kaggle notebook's *Input* panel) |
+| dataset id 615046 (version 1101206) | `xhlulu/panda-resized-train-data-512x512`: one 512×512 PNG per slide in `train_images/train_images/<image_id>.png` |
 
 ```bash
 pip install kaggle   # needs ~/.kaggle/kaggle.json and the competition rules accepted
 kaggle competitions download -c histopathologic-cancer-detection -p /data/histopathologic-cancer-detection
 kaggle competitions download -c prostate-cancer-grade-assessment -f train.csv -p /data/prostate-cancer-grade-assessment
-kaggle datasets download -d <resized-panda-dataset-used-in-the-paper> -p /data/panda-resized
+kaggle datasets download -d xhlulu/panda-resized-train-data-512x512 -p /data/panda-resized
 # unzip the archives, then:
 cp configs/paths.example.yaml configs/paths.yaml   # and edit the three paths
 ```
