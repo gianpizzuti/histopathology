@@ -96,8 +96,8 @@ def main() -> int:
                 cmd.append("--force")
             # PCI_BUS_ID: GPU ids are the same as in nvidia-smi (CUDA's default order may differ)
             env = {**os.environ, "CUDA_DEVICE_ORDER": "PCI_BUS_ID", "CUDA_VISIBLE_DEVICES": gpu,
-                   "OMP_NUM_THREADS": threads,
-                   "MKL_NUM_THREADS": threads, "PYTHONUNBUFFERED": "1"}
+                   "OMP_NUM_THREADS": threads, "MKL_NUM_THREADS": threads,
+                   "OPENBLAS_NUM_THREADS": threads, "PYTHONUNBUFFERED": "1"}
             logf = open(log_dir / f"{u.tag}.log", "a")
             p = subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, env=env, cwd=REPO_ROOT)
             running[p] = (u, gpu, time.time(), logf)

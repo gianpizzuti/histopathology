@@ -14,9 +14,14 @@ import argparse
 import os
 import sys
 
-from sslhist.config import load_config
-from sslhist.io import Unit
-from sslhist.runner import run_unit
+# Same CPU thread limits that launch.py sets for every unit, also when a unit is started
+# by hand (set before numpy/torch are imported; one thread per core is very slow here).
+for _var in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"]:
+    os.environ.setdefault(_var, "2")
+
+from sslhist.config import load_config  # noqa: E402
+from sslhist.io import Unit  # noqa: E402
+from sslhist.runner import run_unit  # noqa: E402
 
 
 def main() -> int:

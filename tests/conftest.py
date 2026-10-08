@@ -2,11 +2,16 @@ import os
 import sys
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-import pytest
-import yaml
-from PIL import Image
+# Few CPU threads per library, set before numpy/torch are imported: on a many-core server
+# the default (one thread per core) makes the tiny CPU workloads of the tests very slow.
+for _var in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"]:
+    os.environ.setdefault(_var, "2")
+
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import pytest  # noqa: E402
+import yaml  # noqa: E402
+from PIL import Image  # noqa: E402
 
 # Tests never use a GPU, also on the shared server: hide every GPU from this process
 # and from the scripts it starts (set before torch initialises CUDA).
