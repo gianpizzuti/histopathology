@@ -134,3 +134,30 @@ def test_status_parses_unit_logs():
     relaunched = run + "Traceback (most recent call last):\nRuntimeError: boom\n" + run + ep.format(1)
     assert status.parse_log(relaunched)["state"] == "running"
     assert status.parse_log(run + ep.format(10) + "  [PROBE] frac=0.01\n")["phase"] == "probes / saving"
+
+
+def test_aggregate_include_other_experiment(tmp_path, tiny_config, subprocess_env):
+    """E2-style aggregation that adds another experiment run on the same splits."""
+    import yaml
+    base = yaml.safe_load(tiny_config.read_text())
+    cfgs = {}
+    for exp, backbone in [("exp_a", "resnet18"), ("exp_b", "vit_tiny_test")]:
+        c = dict(base, experiment=exp, grid={"datasets": ["panda"], "methods": ["simclr"], "backbones": [backbone]})
+        c["protocol"] = dict(base["protocol"], splits=[0], seeds=[0, 1])
+        path = tmp_path / f"{exp}.yaml"
+        path.write_text(yaml.safe_dump(c))
+        cfgs[exp] = path
+        run_cfg = load_config(str(path))
+        for seed in (0, 1):
+            run_unit(run_cfg, Unit("panda", "simclr", backbone, 0, seed))
+
+    res = subprocess.run([sys.executable, "scripts/aggregate.py", "--config", str(cfgs["exp_b"]),
+                          "--include", "exp_a", "--reference", "resnet18"],
+                         cwd=REPO, env=subprocess_env, capture_output=True, text=True)
+    assert res.returncode == 0, res.stdout + res.stderr
+    out = exp_results_dir(load_config(str(cfgs["exp_b"]))) / "with_exp_a"
+    summary = pd.read_csv(out / "summary.csv")
+    assert set(summary["backbone"]) == {"resnet18", "vit_tiny_test"}
+    paired = pd.read_csv(out / "paired_vs_resnet18.csv")
+    assert set(paired["backbone"]) == {"vit_tiny_test"} and (paired["n_pairs"] == 2).all()
+    assert (out / "figures" / "exp_b_exp_a_panda_auroc.pdf").exists()

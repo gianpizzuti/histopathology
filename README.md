@@ -98,6 +98,8 @@ watch -n 60 python scripts/status.py --config configs/e1_vit_matched.yaml   # re
 
 # 3. tables, paired comparison vs ResNet-18, figures
 python scripts/aggregate.py --config configs/e1_vit_matched.yaml --reference resnet18
+#    experiments on the same splits can be analysed together (written to <experiment>/with_<other>/):
+python scripts/aggregate.py --config configs/e2_resnet50.yaml --include e1_vit_matched --reference resnet18
 git add results/lnbi/e1_vit_matched && git commit -m "E1 results" && git push
 ```
 

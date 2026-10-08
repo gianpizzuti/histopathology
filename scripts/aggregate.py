@@ -8,15 +8,20 @@
   results/lnbi/<experiment>/paired_vs_<ref>.csv  paired differences vs a reference backbone
   results/lnbi/<experiment>/figures/<experiment>_<dataset>_<metric>.pdf  (camera-ready style)
 
-Example:
+With --include, the results of other experiments run on the same splits are
+added (e.g. E2 + E1: ResNet-50 vs ResNet-18 vs ViT-B/16) and everything is
+written to results/lnbi/<experiment>/with_<included>/ instead.
+
+Examples:
   python scripts/aggregate.py --config configs/e1_vit_matched.yaml --reference resnet18
+  python scripts/aggregate.py --config configs/e2_resnet50.yaml --include e1_vit_matched --reference resnet18
 """
 import argparse
 import sys
 
 import pandas as pd
 
-from sslhist.config import load_config
+from sslhist.config import load_config, resolve
 from sslhist.io import exp_results_dir, load_legacy_csv, load_raw
 from sslhist.metrics import METRICS
 from sslhist.plotting import plot_label_efficiency
@@ -38,41 +43,51 @@ def main() -> int:
     ap.add_argument("--reference", default=None, help="backbone for the paired comparison, e.g. resnet18")
     ap.add_argument("--legacy-csv", nargs="*", default=[],
                     help="conference results_raw_*.csv to include as experiment 'conference'")
+    ap.add_argument("--include", nargs="*", default=[], metavar="EXPERIMENT",
+                    help="other experiments (folder names in results/lnbi) to analyse together with this one")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
-    out = exp_results_dir(cfg)
-    raw = load_raw([out])
-    if raw.empty:
-        print(f"No results found in {out / 'raw'}")
+    exp_dir = exp_results_dir(cfg)
+    exps = [cfg["experiment"]] + args.include
+    raw = load_raw([exp_dir] + [resolve(cfg["results_dir"]) / e for e in args.include])
+    if raw.empty or not raw["experiment"].isin([cfg["experiment"]]).any():
+        print(f"No results found in {exp_dir / 'raw'}")
+        return 1
+    missing = [e for e in args.include if not raw["experiment"].isin([e]).any()]
+    if missing:
+        print(f"No results found for included experiment(s): {missing}")
         return 1
     if args.legacy_csv:
         raw = pd.concat([raw] + [load_legacy_csv(p) for p in args.legacy_csv], ignore_index=True)
 
+    out = exp_dir / ("with_" + "_".join(args.include)) if args.include else exp_dir
+    out.mkdir(parents=True, exist_ok=True)
     raw.to_csv(out / "all_runs.csv", index=False)
     summary = summarize(raw)
     summary.to_csv(out / "summary.csv", index=False)
-    to_latex(summary[summary.experiment == cfg["experiment"]], out / "summary.tex",
-             caption=f"{cfg['experiment']}: mean $\\pm$ std over splits $\\times$ seeds.")
+    cur = summary[summary.experiment.isin(exps)].sort_values(["dataset", "backbone", "method", "label_frac"])
+    to_latex(cur, out / "summary.tex",
+             caption=f"{' + '.join(exps)}: mean $\\pm$ std over splits $\\times$ seeds.")
 
     expected = len(cfg["protocol"]["splits"]) * len(cfg["protocol"]["seeds"])
-    for msg in check_completeness(summary[summary.experiment == cfg["experiment"]], expected):
+    for msg in check_completeness(cur, expected):
         print("[WARN] incomplete:", msg)
 
     if args.reference:
-        paired = paired_comparison(raw[raw.experiment == cfg["experiment"]], args.reference)
+        paired = paired_comparison(raw[raw.experiment.isin(exps)], args.reference)
         paired.to_csv(out / f"paired_vs_{args.reference}.csv", index=False)
 
-    cur = summary[summary.experiment == cfg["experiment"]]
     table = readable_table(cur)
     (out / "summary.txt").write_text(table + "\n")
     print(table)
 
     figs = out / "figures"
     figs.mkdir(exist_ok=True)
+    prefix = "_".join(exps)
     for ds in sorted(cur["dataset"].unique()):
         for m in METRICS:
-            plot_label_efficiency(cur, ds, m, figs / f"{cfg['experiment']}_{ds}_{m}.pdf")
+            plot_label_efficiency(cur, ds, m, figs / f"{prefix}_{ds}_{m}.pdf")
 
     print(f"[aggregate] {len(raw)} rows -> {out}")
     return 0
