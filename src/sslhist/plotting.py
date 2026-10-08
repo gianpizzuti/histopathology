@@ -58,6 +58,25 @@ _TITLE_METRIC = {"auroc": "AUC", "accuracy": "ACCURACY", "f1": "F1", "ece": "ECE
 _YLABEL = {"auroc": "AUC", "accuracy": "Accuracy", "f1": "F1", "ece": "ECE", "brier": "Brier score"}
 
 
+# Up to this many series the legend stays inside the axes (camera-ready); with more it
+# would cover the data, so it goes to the right of the axes.
+MAX_LEGEND_INSIDE = 4
+LEGEND_WIDTH = 3.2  # inches added to the figure for a legend outside the axes
+
+
+def _legend(fig, ax, outside: bool, **kw) -> None:
+    if outside:
+        ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), borderaxespad=0.0, fontsize="small", **kw)
+    else:
+        ax.legend(**kw)
+    fig.tight_layout()
+
+
+def _save(fig, out_pdf) -> None:
+    fig.savefig(out_pdf, bbox_inches="tight")  # keeps a legend placed outside the axes
+    plt.close(fig)
+
+
 def series_label(method: str, backbone: str) -> str:
     return f"{_LEGEND_METHOD.get(method, method.upper())} + {backbone}"
 
@@ -78,14 +97,18 @@ def plot_label_efficiency(summary, dataset: str, metric: str, out_pdf, figsize=(
     df = summary[summary["dataset"] == dataset]
     fracs = sorted(df["label_frac"].unique())
     used = {}
-    fig, ax = plt.subplots(figsize=figsize)
-    for method, backbone in sorted(set(zip(df["method"], df["backbone"]))):
+    series = sorted(set(zip(df["method"], df["backbone"])))
+    many = len(series) > MAX_LEGEND_INSIDE
+    # with the legend outside, the figure is widened so the axes keep the same size
+    fig, ax = plt.subplots(figsize=(figsize[0] + (LEGEND_WIDTH if many else 0), figsize[1]))
+    for method, backbone in series:
         s = df[(df.method == method) & (df.backbone == backbone)].set_index("label_frac").reindex(fracs)
         mean, std = s[f"{metric}_mean"].to_numpy(), s[f"{metric}_std"].fillna(0).to_numpy()
         color = series_color(method, backbone, used)
         ax.plot(fracs, mean, marker="o", color=color, linestyle=METHOD_LINESTYLE.get(method, "-"),
                 label=series_label(method, backbone))
-        ax.fill_between(fracs, mean - std, mean + std, color=color, alpha=0.2, linewidth=0)
+        # lighter bands when many series overlap
+        ax.fill_between(fracs, mean - std, mean + std, color=color, alpha=0.08 if many else 0.2, linewidth=0)
     ax.set_xscale("log")
     ax.set_xticks(fracs)
     ax.set_xticklabels([f"{f * 100:g}%" for f in fracs])
@@ -93,16 +116,14 @@ def plot_label_efficiency(summary, dataset: str, metric: str, out_pdf, figsize=(
     ax.set_xlabel("Label fraction")
     ax.set_ylabel(ylabel or _YLABEL.get(metric, metric))
     ax.set_title(title or f"{dataset.upper()} label efficiency: {_TITLE_METRIC.get(metric, metric.upper())} (mean±std)")
-    ax.legend(fontsize="small" if len(set(zip(df["method"], df["backbone"]))) > 8 else None)
-    fig.tight_layout()
-    fig.savefig(out_pdf)
-    plt.close(fig)
+    _legend(fig, ax, many)
+    _save(fig, out_pdf)
 
 
 # -----------------------
 # E6 (OOD) figures
 # -----------------------
-def plot_confidence_bars(summary, dataset: str, ood_dataset: str, frac: float, out_pdf, figsize=(10, 4.5)) -> None:
+def plot_confidence_bars(summary, dataset: str, ood_dataset: str, frac: float, out_pdf, figsize=(11, 4.5)) -> None:
     """Mean MSP on ID (evaluation half) and OOD images per series at one label fraction,
     before and after temperature scaling; error bars = std over splits x seeds."""
     import numpy as np
@@ -118,15 +139,13 @@ def plot_confidence_bars(summary, dataset: str, ood_dataset: str, frac: float, o
         ax.bar(x + (j - 1.5) * w, [r[f"{col}_mean"] for r in rows], w, yerr=[r[f"{col}_std"] for r in rows],
                color=color, alpha=0.45 if hatch else 0.85, hatch=hatch, edgecolor=color, capsize=2, label=label)
     ax.set_xticks(x)
-    ax.set_xticklabels([series_label(m, b).replace(" + ", "\n") for m, b in series], fontsize=7)
+    ax.set_xticklabels([series_label(m, b) for m, b in series], rotation=30, ha="right", fontsize=8)
     ax.set_ylim(0.5, 1.0)
     ax.set_ylabel("Mean MSP (confidence)")
     ax.set_title(f"{dataset.upper()} (ID) vs {ood_dataset.upper()} (OOD): confidence at {frac * 100:g}% labels "
                  "(mean±std)")
-    ax.legend(ncol=4, fontsize="small")
-    fig.tight_layout()
-    fig.savefig(out_pdf)
-    plt.close(fig)
+    _legend(fig, ax, True)
+    _save(fig, out_pdf)
 
 
 def plot_msp_histograms(panels, title: str, out_pdf, bins: int = 25) -> None:
@@ -150,8 +169,9 @@ def plot_msp_histograms(panels, title: str, out_pdf, bins: int = 25) -> None:
         ax.axis("off")
     for ax in axes[-1]:
         ax.set_xlabel("MSP", fontsize=8)
-    axes[0][0].legend(fontsize=6)
     fig.suptitle(title, fontsize=10)
     fig.tight_layout()
-    fig.savefig(out_pdf)
-    plt.close(fig)
+    # one legend for all panels, below them
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=4, fontsize=8, frameon=False)
+    _save(fig, out_pdf)
