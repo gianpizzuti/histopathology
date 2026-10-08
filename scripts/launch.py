@@ -11,7 +11,6 @@ Examples:
   nohup python scripts/launch.py --config configs/e1_vit_matched.yaml --gpus 2,3 --per-gpu 3 > launch.log 2>&1 &
 """
 import argparse
-import itertools
 import os
 import signal
 import subprocess
@@ -20,11 +19,12 @@ import time
 from pathlib import Path
 
 from sslhist.config import REPO_ROOT, load_config
-from sslhist.io import Unit, exp_artifacts_dir, unit_complete
+from sslhist.io import Unit, exp_artifacts_dir, grid_units, unit_complete
 
 # Relative cost, only used to start the longest units first.
 _COST = {"pcam": 20, "panda": 1, "vit_b_16": 8, "vit_s_16": 3, "resnet50": 3, "resnet18": 1,
-         "dinov2_vitb14": 1, "dinov2_vits14": 0.5, "byol": 1.3, "simclr": 1.0, "barlow": 1.0, "frozen": 0.1}
+         "dinov2_vitb14": 1, "dinov2_vits14": 0.5, "byol": 1.3, "simclr": 1.0, "barlow": 1.0, "frozen": 0.1,
+         "sup_scratch": 1.0, "sup_imagenet": 1.0}
 
 
 def cost(u: Unit) -> float:
@@ -52,14 +52,8 @@ def main() -> int:
     args = ap.parse_args()
 
     cfg = load_config(args.config, args.paths)
-    grid, prot = cfg.get("grid", {}), cfg["protocol"]
-    units = [Unit(*u) for u in itertools.product(
-        csv_list(args.datasets) or grid["datasets"],
-        csv_list(args.methods) or grid["methods"],
-        csv_list(args.backbones) or grid["backbones"],
-        csv_list(args.splits, int) or prot["splits"],
-        csv_list(args.seeds, int) or prot["seeds"],
-    )]
+    units = grid_units(cfg, csv_list(args.datasets), csv_list(args.methods), csv_list(args.backbones),
+                       csv_list(args.splits, int), csv_list(args.seeds, int))
     done = [u for u in units if unit_complete(cfg, u)] if not args.force else []
     todo = sorted([u for u in units if u not in done], key=cost, reverse=True)
     print(f"[launch] experiment={cfg['experiment']} units={len(units)} complete={len(done)} to run={len(todo)}")

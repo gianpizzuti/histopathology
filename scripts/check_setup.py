@@ -27,7 +27,7 @@ from PIL import Image
 
 from sslhist import data as D
 from sslhist.config import REPO_ROOT, load_config
-from sslhist.io import Unit, exp_artifacts_dir, exp_results_dir, result_path
+from sslhist.io import exp_artifacts_dir, exp_results_dir, grid_units, result_path
 
 FAILURES, WARNINGS = [], []
 
@@ -145,9 +145,7 @@ def quick_run(args, cfg):
 
 
 def units_of(cfg):
-    g, p = cfg["grid"], cfg["protocol"]
-    return [Unit(d, m, b, s, k) for d in g["datasets"] for m in g["methods"] for b in g["backbones"]
-            for s in p["splits"] for k in p["seeds"]]
+    return grid_units(cfg)
 
 
 def check_outputs(args, cfg):

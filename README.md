@@ -7,8 +7,10 @@ notebooks are kept unchanged in `notebooks/legacy/`. New experiments use the
 
 ```
 configs/            base.yaml (conference protocol) + one YAML per experiment
-src/sslhist/        data, models, ssl (SimCLR/BYOL/Barlow Twins), probe, metrics, runner, report, plotting
+src/sslhist/        data, models, ssl (SimCLR/BYOL/Barlow Twins), probe, metrics, runner, report, plotting,
+                    ood + supervised (E6)
 scripts/            check_setup.py · run_unit.py · launch.py · status.py · aggregate.py · make_splits.py · prefetch_weights.py
+                    (E6: ood.py and supervised.py in src/sslhist, same scripts)
 tests/              protocol equivalence with the notebooks + CPU smoke tests
 results/lnbi/       committed: per-run JSON, summary CSV/LaTeX, PDF figures
 artifacts/          NOT committed: encoders, features, logs
@@ -43,7 +45,7 @@ pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorc
 pip install -e ".[dev]" kaggle
 python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.device_count(), torch.cuda.get_device_name(0))"
 # expected: 2.6.0+cu124 True 4 NVIDIA H100 NVL
-pytest -q            # 17 passed, ~2 min; the tests never use a GPU
+pytest -q            # 32 passed, a few minutes; the tests never use a GPU
 ```
 
 Later sessions: `conda activate hist && cd /opt/scratch/labs/vap/gianluca/ssl-histo/histopathology`.
@@ -114,6 +116,7 @@ Experiments so far (one config each, same splits and labelled subsets):
 | `e2_resnet50.yaml` | ResNet-50, SimCLR + BYOL | 36 |
 | `e3_dinov2.yaml` | DINOv2 ViT-S/14 and ViT-B/14, frozen (method `frozen`, ImageNet normalisation); run `python scripts/prefetch_weights.py` once first | 36 |
 | `e3_barlow.yaml` | ResNet-18, Barlow Twins | 18 |
+| `e6_ood.yaml` | OOD analysis PCam ↔ PANDA of all the encoders above + supervised ResNet-18 baselines (see below) | 198 |
 
 A *unit* is one SSL pretraining (dataset, method, backbone, split, seed) followed
 by the linear probes at 1/5/10% labels. Logs: `artifacts/<experiment>/logs/<unit>.log`.
@@ -124,6 +127,50 @@ Single unit by hand (e.g. to debug), or a timing test of its first 200 SSL steps
 python scripts/run_unit.py --gpu 2 --config configs/e1_vit_matched.yaml \
     --dataset pcam --method simclr --backbone vit_b_16 --split 0 --seed 0 --timing 200
 ```
+
+## E6: is OOD overconfidence specific to SSL?
+
+Run after E1, E2 and E3: no SSL pretraining, it reads their encoders, probes and
+features from `artifacts/`. For every unit (ID dataset, method, backbone, split, seed)
+and label fraction it scores the ID validation images and 2000 images of the other
+dataset (PCam → PANDA, PANDA → PCam; notebook 09: `RandomState(123)`, OOD images
+resized to the ID image size). The supervised ResNet-18 baselines of notebook 06
+(from scratch and ImageNet init) are trained on the same labelled subsets.
+
+```bash
+python scripts/prefetch_weights.py --backbones resnet18      # ImageNet ResNet-18, once
+python scripts/launch.py --config configs/e6_ood.yaml --gpus 2,3 --per-gpu 4 --dry-run   # 198 units
+python scripts/launch.py --config configs/e6_ood.yaml --gpus 2,3 --per-gpu 4 2>&1 | tee e6_launch.log
+python scripts/status.py --config configs/e6_ood.yaml
+python scripts/aggregate.py --config configs/e6_ood.yaml --reference resnet18:sup_imagenet resnet18:sup_scratch
+```
+
+What is computed (`src/sslhist/ood.py`), per run:
+- ID metrics on the whole validation set (`auroc`, `ece`, ...: for the SSL encoders identical to E1-E3, checked);
+- temperature scaling: T fitted (NLL) on a stratified half of the validation set (seed `2000 + split`,
+  the same for every method), every other E6 number on the other half, before (`_raw`) and after (`_ts`);
+- confidence on ID and OOD images: mean MSP (`id_msp_*`, `ood_msp_*`), mean binary entropy in bits
+  (`*_entropy_*`), share of OOD images with MSP ≥ 0.9 (`ood_conf90_*`), share predicted positive;
+- OOD detection with score 1 − MSP, OOD = positive class, not flipped (`ood_auroc_raw` < 0.5: more
+  confident on OOD than on ID), and FPR at 95% ID retained. A single temperature does not change the
+  ranking, so these are the same after scaling; for a binary classifier MSP and entropy rank alike;
+- feature-space control without the classifier: cosine distance to the 10th nearest ID training feature
+  (`knn_ood_auroc`, `knn_fpr95`): does the representation separate the datasets even when the
+  classifier is confident on both?
+- checks for the saved encoders: the loaded encoder reproduces the saved features (`encoder_check_rel_diff`),
+  and the saved probe its logits (`probe_check_max_abs_diff`); a unit stops if the encoder does not match.
+
+Supervised baselines: backbone + linear head trained end to end on the labelled subset (AdamW lr 1e-3,
+wd 1e-4, 10 epochs, batch 128, no augmentation, gradient clipping at 1). Unlike notebook 06, the AMP
+gradients are unscaled before clipping (`supervised.unscale_before_clip: false` reproduces the notebook,
+which clipped the scaled gradients), and every label fraction starts from the run seed.
+
+Outputs in `results/lnbi/e6_ood/`: `raw/*.json` (one per run), `summary.txt` (three tables:
+calibration, confidence, detection), `summary.csv`, `summary.tex` + `summary_detection.tex`,
+`paired_vs_resnet18-sup_imagenet.csv` (every series minus the ImageNet supervised baseline, same
+split/seed/labelled subset, Wilcoxon), and in `figures/`: label-efficiency curves of the OOD metrics,
+`*_confidence_bars.pdf` (ID vs OOD MSP before/after scaling, 10% labels) and `*_msp_hist.pdf`
+(MSP distributions, from `artifacts/e6_ood/scores/`).
 
 ## Outputs
 

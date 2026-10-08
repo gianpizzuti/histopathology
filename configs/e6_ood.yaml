@@ -1,0 +1,43 @@
+# E6 - Is OOD overconfidence specific to SSL? (PCam <-> PANDA, notebook 09 protocol)
+# Compares the confidence (MSP, entropy) of every saved SSL / frozen encoder of E1-E3 with
+# supervised ResNet-18 baselines (from scratch and ImageNet init, notebook 06) trained on
+# the same labelled subsets, before and after temperature scaling. No SSL pretraining:
+# run it after E1, E2 and E3, whose encoders, probes and features it reads from artifacts/.
+# Supervised ImageNet weights: run `python scripts/prefetch_weights.py --backbones resnet18` once.
+inherit: base.yaml
+experiment: e6_ood
+kind: ood
+
+ood:
+  # where the encoders/probes/features of each unit are looked for (first match)
+  source_experiments: [e1_vit_matched, e2_resnet50, e3_dinov2, e3_barlow]
+  pairs: {pcam: panda, panda: pcam}   # ID -> OOD dataset
+  n_samples: 2000         # OOD images, drawn once with RandomState(123) as in notebook 09
+  sample_seed: 123
+  calib_frac: 0.5         # temperature fitted on this stratified share of the ID validation set,
+  calib_seed_base: 2000   # seed 2000 + split; all E6 scores on the other share
+  knn_k: 10               # feature-space control: cosine distance to the k-th nearest neighbour
+  knn_bank: 10000         # ID training images in the kNN bank (random subset, seed below)
+  knn_seed: 0
+  encoder_check_n: 64     # validation images re-encoded to check the loaded encoder
+
+supervised:               # notebook 06: AdamW, 10 epochs, labelled subset only, no augmentation
+  epochs: 10
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  unscale_before_clip: true   # false = notebook 06 (clips the AMP-scaled gradients)
+
+grid:
+  datasets: [pcam, panda]
+  series:                 # [method, backbone]
+    - [simclr, resnet18]
+    - [byol, resnet18]
+    - [simclr, vit_b_16]
+    - [byol, vit_b_16]
+    - [simclr, resnet50]
+    - [byol, resnet50]
+    - [barlow, resnet18]
+    - [frozen, dinov2_vits14]
+    - [frozen, dinov2_vitb14]
+    - [sup_scratch, resnet18]
+    - [sup_imagenet, resnet18]

@@ -1,12 +1,14 @@
 #!/usr/bin/env python
-"""Download once, and check, the pretrained encoders that E3 probes frozen (DINOv2).
+"""Download once, and check, pretrained weights: DINOv2 (E3, frozen encoders) and the
+ImageNet ResNet-18 of the E6 supervised baseline.
 
-Run it before launching E3, so that the units started in parallel find the weights
+Run it before launching E3 / E6, so that the units started in parallel find the weights
 in the torch.hub cache ($TORCH_HOME/hub) instead of all downloading them at once.
 Runs on CPU (no GPU is used).
 
-Example:
-  python scripts/prefetch_weights.py
+Examples:
+  python scripts/prefetch_weights.py                          # E3
+  python scripts/prefetch_weights.py --backbones resnet18     # E6
 """
 import argparse
 import os

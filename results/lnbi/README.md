@@ -10,4 +10,5 @@ See the main README for the file formats.
 | `e2_resnet50/` | ResNet-50 backbone, SimCLR + BYOL, same protocol as ResNet-18 | R2.2 |
 | `e3_dinov2/` | DINOv2 ViT-S/14 and ViT-B/14, pretrained and frozen (no SSL on our data) | R2.3 |
 | `e3_barlow/` | ResNet-18 with Barlow Twins, same protocol as SimCLR/BYOL | R2.3 |
+| `e6_ood/` | OOD confidence PCam ↔ PANDA of the E1-E3 encoders vs supervised ResNet-18 (scratch, ImageNet), before/after temperature scaling | OOD mechanism |
 | `splits/` | universe, splits and labelled subsets as image ids | all |

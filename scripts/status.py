@@ -9,14 +9,13 @@ Examples:
   watch -n 60 python scripts/status.py --config configs/e1_vit_matched.yaml   # refresh every minute
 """
 import argparse
-import itertools
 import json
 import re
 import sys
 import time
 
 from sslhist.config import load_config, resolve
-from sslhist.io import Unit, exp_artifacts_dir, exp_results_dir, unit_complete
+from sslhist.io import exp_artifacts_dir, exp_results_dir, grid_units, unit_complete
 
 EPOCH_RE = re.compile(r"\] ep (\d+)/(\d+) loss=\S+ time=([\d.]+)s")
 
@@ -34,7 +33,11 @@ def parse_log(text: str) -> dict:
     info = {"state": "running", "epoch": 0, "epochs": None, "epoch_times": [t for _, _, t in epochs]}
     if epochs:
         info["epoch"], info["epochs"] = epochs[-1][0], epochs[-1][1]
-    if "[PROBE]" in seg or (epochs and epochs[-1][0] == epochs[-1][1]):
+    if "[SUP]" in seg:  # E6 supervised baseline: one training per label fraction
+        info["phase"] = f"supervised, label fraction {seg.count('[SUP] frac=')}"
+    elif "[E6]" in seg:
+        info["phase"] = "OOD scoring"
+    elif "[PROBE]" in seg or (epochs and epochs[-1][0] == epochs[-1][1]):
         info["phase"] = "probes / saving"
     elif "[FROZEN]" in seg:
         info["phase"] = "features (frozen)"
@@ -55,9 +58,8 @@ def main() -> int:
     args = ap.parse_args()
 
     cfg = load_config(args.config)
-    grid, prot = cfg["grid"], cfg["protocol"]
-    units = [Unit(*u) for u in itertools.product(grid["datasets"], grid["methods"], grid["backbones"],
-                                                 prot["splits"], prot["seeds"])]
+    prot = cfg["protocol"]
+    units = grid_units(cfg)
     logs = exp_artifacts_dir(cfg) / "logs"
     n_epochs = int(prot["ssl_epochs"])
 

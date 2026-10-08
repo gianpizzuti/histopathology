@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-"""Run one SSL pretraining unit + linear probes for all label fractions.
+"""Run one unit: SSL pretraining + linear probes for all label fractions or, with an
+E6 config (``kind: ood``), the OOD scoring of a saved encoder / a supervised baseline.
 
 Examples:
   # timing test on GPU 2 (numbered as in nvidia-smi): 200 SSL steps, prints the estimated time of a full run
@@ -21,6 +22,7 @@ for _var in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"]:
 
 from sslhist.config import load_config  # noqa: E402
 from sslhist.io import Unit  # noqa: E402
+from sslhist.ood import SUPERVISED, run_ood_unit  # noqa: E402
 from sslhist.runner import run_unit  # noqa: E402
 
 
@@ -31,7 +33,7 @@ def main() -> int:
     ap.add_argument("--config", required=True)
     ap.add_argument("--paths", default=None, help="paths YAML (default: configs/paths.yaml)")
     ap.add_argument("--dataset", required=True, choices=["pcam", "panda"])
-    ap.add_argument("--method", required=True, choices=["simclr", "byol", "barlow", "frozen"])
+    ap.add_argument("--method", required=True, choices=["simclr", "byol", "barlow", "frozen", *SUPERVISED])
     ap.add_argument("--backbone", required=True)
     ap.add_argument("--split", type=int, required=True)
     ap.add_argument("--seed", type=int, required=True)
@@ -49,7 +51,14 @@ def main() -> int:
 
     cfg = load_config(args.config, args.paths)
     unit = Unit(args.dataset, args.method, args.backbone, args.split, args.seed)
-    run_unit(cfg, unit, force=args.force, timing_steps=args.timing)
+    if cfg.get("kind") == "ood":
+        if args.timing is not None:
+            ap.error("--timing is for SSL pretraining units")
+        run_ood_unit(cfg, unit, force=args.force)
+    elif unit.method in SUPERVISED:
+        ap.error(f"method {unit.method} needs an E6 config (configs/e6_ood.yaml)")
+    else:
+        run_unit(cfg, unit, force=args.force, timing_steps=args.timing)
     return 0
 
 

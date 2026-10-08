@@ -2,11 +2,12 @@
 fraction) under ``results/lnbi/<experiment>/raw/``; bulky artifacts (encoders,
 features, logs) under ``artifacts/<experiment>/``, which is not committed."""
 import glob
+import itertools
 import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Optional, Sequence
 
 import pandas as pd
 
@@ -27,6 +28,22 @@ class Unit:
     @property
     def tag(self) -> str:
         return f"{self.dataset}__{self.method}__{self.backbone}__split{self.split}__seed{self.seed}"
+
+
+def grid_units(cfg: dict, datasets: Optional[Sequence[str]] = None, methods: Optional[Sequence[str]] = None,
+               backbones: Optional[Sequence[str]] = None, splits: Optional[Sequence[int]] = None,
+               seeds: Optional[Sequence[int]] = None) -> List[Unit]:
+    """Units of an experiment. The grid is either methods x backbones or, when only some
+    pairs exist (E6), an explicit list ``series: [[method, backbone], ...]``. Arguments
+    that are given replace (methods x backbones) or filter (series) the config values."""
+    grid, prot = cfg.get("grid", {}), cfg["protocol"]
+    if "series" in grid:
+        series = [tuple(s) for s in grid["series"]
+                  if (not methods or s[0] in methods) and (not backbones or s[1] in backbones)]
+    else:
+        series = list(itertools.product(methods or grid["methods"], backbones or grid["backbones"]))
+    return [Unit(d, m, b, s, k) for d in (datasets or grid["datasets"]) for m, b in series
+            for s in (splits or prot["splits"]) for k in (seeds or prot["seeds"])]
 
 
 def frac_tag(frac: float) -> str:
