@@ -80,6 +80,7 @@ def tiny_config(tmp_path, fake_pcam, fake_panda):
         "families": {
             "resnet": {"img_size": {"pcam": 32, "panda": 32}, "batch_ssl": 32, "batch_sup": 64},
             "vit": {"img_size": {"pcam": 32, "panda": 32}, "batch_ssl": 16, "batch_sup": 64},
+            "dinov2": {"img_size": {"pcam": 28, "panda": 28}, "batch_sup": 64},
         },
         "runtime": {"num_workers": 0, "torch_threads": 2},
         "grid": {"datasets": ["panda"], "methods": ["simclr"], "backbones": ["resnet18", "vit_tiny_test"]},

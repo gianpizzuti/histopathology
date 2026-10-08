@@ -21,6 +21,7 @@ SERIES_COLORS = {
     ("simclr", "vit_s_16"): "tab:olive",
     ("barlow", "resnet18"): "tab:cyan",
     ("frozen", "dinov2_vits14"): "tab:gray",
+    ("frozen", "dinov2_vitb14"): "black",
 }
 _EXTRA = ["#1a55a3", "#b3541e", "#2e7d32", "#7b1fa2", "#00838f", "#5d4037"]
 

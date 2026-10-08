@@ -15,6 +15,8 @@ written to results/lnbi/<experiment>/with_<included>/ instead.
 Examples:
   python scripts/aggregate.py --config configs/e1_vit_matched.yaml --reference resnet18
   python scripts/aggregate.py --config configs/e2_resnet50.yaml --include e1_vit_matched --reference resnet18
+  python scripts/aggregate.py --config configs/e3_dinov2.yaml --include e1_vit_matched e2_resnet50 \
+      --reference resnet50:simclr
 """
 import argparse
 import sys
@@ -40,7 +42,9 @@ def readable_table(summary: pd.DataFrame) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", required=True)
-    ap.add_argument("--reference", default=None, help="backbone for the paired comparison, e.g. resnet18")
+    ap.add_argument("--reference", nargs="*", default=[],
+                    help="paired comparison: a backbone (resnet18: same method) or backbone:method "
+                         "(resnet50:simclr: every series vs that one); several allowed")
     ap.add_argument("--legacy-csv", nargs="*", default=[],
                     help="conference results_raw_*.csv to include as experiment 'conference'")
     ap.add_argument("--include", nargs="*", default=[], metavar="EXPERIMENT",
@@ -74,9 +78,9 @@ def main() -> int:
     for msg in check_completeness(cur, expected):
         print("[WARN] incomplete:", msg)
 
-    if args.reference:
-        paired = paired_comparison(raw[raw.experiment.isin(exps)], args.reference)
-        paired.to_csv(out / f"paired_vs_{args.reference}.csv", index=False)
+    for ref in args.reference:
+        paired = paired_comparison(raw[raw.experiment.isin(exps)], ref)
+        paired.to_csv(out / f"paired_vs_{ref.replace(':', '-')}.csv", index=False)
 
     table = readable_table(cur)
     (out / "summary.txt").write_text(table + "\n")

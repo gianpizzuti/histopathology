@@ -32,12 +32,18 @@ families:
     batch_sup: 128
     simclr: {proj_dim: 128, hidden_dim: 2048}
     byol: {proj_dim: 256, hidden_dim: 4096, ema: 0.996}
+    barlow: {proj_dim: 2048, hidden_dim: 2048, lambd: 0.0051}   # E3 (not in the conference paper)
   vit:
     img_size: {pcam: 224, panda: 224}
     batch_ssl: 16         # legacy fell back to smaller batches on OOM; here it is fixed
     batch_sup: 32
     simclr: {proj_dim: 128, hidden_dim: 1024}
     byol: {proj_dim: 256, hidden_dim: 2048, ema: 0.996}
+    barlow: {proj_dim: 2048, hidden_dim: 2048, lambd: 0.0051}
+  dinov2:                 # E3: pretrained DINOv2 encoders probed frozen (no SSL pretraining)
+    img_size: {pcam: 224, panda: 224}   # multiple of the 14-px patch
+    batch_sup: 128
+    normalize: {mean: [0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225]}   # ImageNet, as in DINOv2 training
 
 runtime:
   # CPU budget per unit = num_workers + torch_threads. On the 64-core server with

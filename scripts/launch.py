@@ -24,7 +24,7 @@ from sslhist.io import Unit, exp_artifacts_dir, unit_complete
 
 # Relative cost, only used to start the longest units first.
 _COST = {"pcam": 20, "panda": 1, "vit_b_16": 8, "vit_s_16": 3, "resnet50": 3, "resnet18": 1,
-         "byol": 1.3, "simclr": 1.0}
+         "dinov2_vitb14": 1, "dinov2_vits14": 0.5, "byol": 1.3, "simclr": 1.0, "barlow": 1.0, "frozen": 0.1}
 
 
 def cost(u: Unit) -> float:

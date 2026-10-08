@@ -1,5 +1,6 @@
 """One unit = SSL pretraining for one (dataset, method, backbone, split, seed),
-followed by a linear probe for every label fraction.
+followed by a linear probe for every label fraction. With method ``frozen`` the
+pretraining is skipped and a pretrained encoder (DINOv2, E3) is probed as is.
 
 Follows ``run_config_resnet18`` and the ViT notebooks, with one documented
 difference: the global seed is set again (to the same run seed) right before
@@ -17,6 +18,7 @@ from . import data as D
 from .config import family_cfg
 from .io import Unit, exp_artifacts_dir, frac_tag, result_path, unit_complete, write_json
 from .metrics import compute_metrics_binary
+from .models import build_backbone
 from .probe import (apply_standardizer, extract_features, fit_standardizer, logits_to_probs,
                     predict_logits, train_probe)
 from .ssl import pretrain_ssl
@@ -46,25 +48,36 @@ def run_unit(cfg: dict, unit: Unit, force: bool = False, timing_steps: Optional[
     labels, ids = ds.labels_all(), np.asarray(ds.ids)
     tr_idx, va_idx = D.make_split(labels, unit.split, prot["val_ratio"], prot["split_base_seed"])
     img = int(fam["img_size"][unit.dataset])
+    norm = D.norm_from_cfg(fam)
+    frozen = unit.method == "frozen"
     rs, ss = D.run_seed(unit.split, unit.seed), D.subset_seed(unit.split, unit.seed)
     log("=" * 90)
     log(f"[RUN] {unit.tag} img={img} n_universe={len(ds)} n_tr={len(tr_idx)} n_va={len(va_idx)} "
         f"device={device} amp={amp}")
     log("=" * 90)
 
-    # ---- SSL pretraining (on the TRAIN part of this split only)
+    # ---- SSL pretraining (on the TRAIN part of this split only), or a frozen pretrained encoder
     set_seed(rs)
-    ssl_ds = ds.make_ssl_dataset(tr_idx, img_size=img)
     t0 = time.time()
-    backbone, hist = pretrain_ssl(
-        unit.method, unit.backbone, ssl_ds, fam[unit.method],
-        batch_size=int(fam["batch_ssl"]), epochs=int(prot["ssl_epochs"]), lr=float(prot["ssl_lr"]),
-        num_workers=nw, device=device, amp=amp,
-        # protocol.max_ssl_steps is only set by the quick check config (configs/check.yaml)
-        max_steps=timing_steps if timing_steps is not None else prot.get("max_ssl_steps"), log=log,
-    )
+    if frozen:
+        if timing_steps is not None:
+            raise ValueError("--timing measures SSL pretraining; frozen encoders have none")
+        backbone, _ = build_backbone(unit.backbone, pretrained=True)
+        backbone = backbone.to(device)
+        hist = {"epoch_loss": [], "epoch_time_s": [], "skipped_batches": 0, "steps": 0, "sec_per_step": 0.0}
+        steps_per_epoch = 0
+        log(f"[FROZEN] {unit.backbone}: pretrained encoder, no SSL pretraining")
+    else:
+        ssl_ds = ds.make_ssl_dataset(tr_idx, img_size=img, norm=norm)
+        backbone, hist = pretrain_ssl(
+            unit.method, unit.backbone, ssl_ds, fam[unit.method],
+            batch_size=int(fam["batch_ssl"]), epochs=int(prot["ssl_epochs"]), lr=float(prot["ssl_lr"]),
+            num_workers=nw, device=device, amp=amp,
+            # protocol.max_ssl_steps is only set by the quick check config (configs/check.yaml)
+            max_steps=timing_steps if timing_steps is not None else prot.get("max_ssl_steps"), log=log,
+        )
+        steps_per_epoch = len(ssl_ds) // int(fam["batch_ssl"])
     ssl_time = time.time() - t0
-    steps_per_epoch = len(ssl_ds) // int(fam["batch_ssl"])
     peak_mem = lambda: torch.cuda.max_memory_allocated() / 1024 ** 3 if device.type == "cuda" else 0.0  # noqa: E731
 
     if timing_steps is not None:
@@ -80,20 +93,20 @@ def run_unit(cfg: dict, unit: Unit, force: bool = False, timing_steps: Optional[
         return est
 
     art = exp_artifacts_dir(cfg)
-    if rt.get("save_encoder", True):
+    if rt.get("save_encoder", True) and not frozen:  # frozen encoders are public checkpoints
         (art / "encoders").mkdir(parents=True, exist_ok=True)
         torch.save({k: v.detach().cpu() for k, v in backbone.state_dict().items()},
                    art / "encoders" / f"{unit.tag}.pt")
 
     # ---- Linear probes
     set_seed(rs)
-    val_dl = DataLoader(ds.make_sup_dataset(va_idx, img_size=img), batch_size=int(fam["batch_sup"]),
+    val_dl = DataLoader(ds.make_sup_dataset(va_idx, img_size=img, norm=norm), batch_size=int(fam["batch_sup"]),
                         shuffle=False, num_workers=nw, pin_memory=pin)
     rows, probe_art = [], {}
     t1 = time.time()
     for frac in prot["label_fracs"]:
         sub_idx = D.label_subset(tr_idx, labels, frac, seed=ss)
-        train_dl = DataLoader(ds.make_sup_dataset(sub_idx, img_size=img), batch_size=int(fam["batch_sup"]),
+        train_dl = DataLoader(ds.make_sup_dataset(sub_idx, img_size=img, norm=norm), batch_size=int(fam["batch_sup"]),
                               shuffle=True, num_workers=nw, pin_memory=pin)
         tr_f, tr_y = extract_features(backbone, train_dl, device, amp)
         va_f, va_y = extract_features(backbone, val_dl, device, amp)
@@ -112,7 +125,9 @@ def run_unit(cfg: dict, unit: Unit, force: bool = False, timing_steps: Optional[
             **metrics,
             "n_labeled": int(len(sub_idx)), "n_train": int(len(tr_idx)), "n_val": int(len(va_idx)),
             "img_size": img, "sample_frac": float(cfg["data"]["sample_frac"][unit.dataset]),
-            "ssl_epochs": int(prot["ssl_epochs"]), "ssl_batch": int(fam["batch_ssl"]),
+            "ssl_epochs": 0 if frozen else int(prot["ssl_epochs"]), "ssl_batch": int(fam.get("batch_ssl", 0)),
+            "encoder": "pretrained, frozen" if frozen else "SSL from scratch",
+            "normalize": "custom" if fam.get("normalize") else "legacy (0.5, 0.5)",
             "ssl_lr": float(prot["ssl_lr"]), "probe_epochs": int(prot["probe_epochs"]),
             "probe_lr": float(prot["probe_lr"]), "num_workers": nw,
             "run_seed": rs, "subset_seed": ss,
@@ -132,7 +147,7 @@ def run_unit(cfg: dict, unit: Unit, force: bool = False, timing_steps: Optional[
 
     # ---- Artifacts for later analyses (E5/E6): features of the full train part and val
     if rt.get("save_features", True):
-        full_tr_dl = DataLoader(ds.make_sup_dataset(tr_idx, img_size=img), batch_size=int(fam["batch_sup"]),
+        full_tr_dl = DataLoader(ds.make_sup_dataset(tr_idx, img_size=img, norm=norm), batch_size=int(fam["batch_sup"]),
                                 shuffle=False, num_workers=nw, pin_memory=pin)
         tr_f, tr_y = extract_features(backbone, full_tr_dl, device, amp)
         va_f, va_y = extract_features(backbone, val_dl, device, amp)

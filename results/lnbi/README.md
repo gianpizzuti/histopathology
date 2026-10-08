@@ -8,4 +8,6 @@ See the main README for the file formats.
 |---|---|---|
 | `e1_vit_matched/` | ViT-B/16 with the ResNet-18 protocol (3 splits × 3 seeds), ResNet-18 re-run as paired reference | R1.2, R2.4 |
 | `e2_resnet50/` | ResNet-50 backbone, SimCLR + BYOL, same protocol as ResNet-18 | R2.2 |
+| `e3_dinov2/` | DINOv2 ViT-S/14 and ViT-B/14, pretrained and frozen (no SSL on our data) | R2.3 |
+| `e3_barlow/` | ResNet-18 with Barlow Twins, same protocol as SimCLR/BYOL | R2.3 |
 | `splits/` | universe, splits and labelled subsets as image ids | all |

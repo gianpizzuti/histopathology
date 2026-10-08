@@ -26,7 +26,7 @@ def main() -> int:
     ap.add_argument("--config", required=True)
     ap.add_argument("--paths", default=None, help="paths YAML (default: configs/paths.yaml)")
     ap.add_argument("--dataset", required=True, choices=["pcam", "panda"])
-    ap.add_argument("--method", required=True, choices=["simclr", "byol"])
+    ap.add_argument("--method", required=True, choices=["simclr", "byol", "barlow", "frozen"])
     ap.add_argument("--backbone", required=True)
     ap.add_argument("--split", type=int, required=True)
     ap.add_argument("--seed", type=int, required=True)

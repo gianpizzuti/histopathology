@@ -20,6 +20,8 @@ from sslhist.runner import run_unit
     Unit("pcam", "byol", "resnet18", 1, 2),
     Unit("panda", "byol", "vit_tiny_test", 2, 1),
     Unit("panda", "simclr", "resnet50", 0, 1),  # E2 backbone
+    Unit("pcam", "barlow", "resnet18", 1, 0),   # E3 Barlow Twins
+    Unit("panda", "frozen", "dinov2_tiny_test", 0, 2),  # E3 frozen encoder (DINOv2 stand-in)
 ])
 def test_run_unit_writes_results_and_artifacts(tiny_config, unit):
     cfg = load_config(str(tiny_config))
@@ -36,7 +38,9 @@ def test_run_unit_writes_results_and_artifacts(tiny_config, unit):
         assert row["n_labeled"] >= 1
 
     art = exp_artifacts_dir(cfg)
-    assert (art / "encoders" / f"{unit.tag}.pt").exists()
+    # frozen encoders are public checkpoints: only SSL-trained encoders are saved
+    assert (art / "encoders" / f"{unit.tag}.pt").exists() == (unit.method != "frozen")
+    assert row["normalize"] == ("custom" if unit.method == "frozen" else "legacy (0.5, 0.5)")
     feats = np.load(art / "features" / f"{unit.tag}.npz")
     assert feats["train_feats"].shape[0] == len(feats["train_idx"])
     assert feats["val_feats"].shape[0] == len(feats["val_idx"])
@@ -161,3 +165,48 @@ def test_aggregate_include_other_experiment(tmp_path, tiny_config, subprocess_en
     paired = pd.read_csv(out / "paired_vs_resnet18.csv")
     assert set(paired["backbone"]) == {"vit_tiny_test"} and (paired["n_pairs"] == 2).all()
     assert (out / "figures" / "exp_b_exp_a_panda_auroc.pdf").exists()
+
+
+def test_barlow_twins_loss():
+    import torch
+    from sslhist.ssl import barlow_twins_loss_fp32
+    z = torch.randn(256, 16)
+    same = barlow_twins_loss_fp32(z, z, lambd=0.0)          # identical views: diagonal of C is 1
+    assert same.item() < 1e-6
+    flipped = barlow_twins_loss_fp32(z, -z, lambd=0.0)      # anti-correlated: (1 - (-1))^2 per dim
+    assert abs(flipped.item() - 4 * 16) < 1e-2  # eps in the standardisation
+    assert barlow_twins_loss_fp32(z, torch.randn(256, 16)).item() > same.item()
+
+
+def test_dinov2_is_loaded_from_torch_hub(monkeypatch):
+    import torch
+    from sslhist import models
+    calls = []
+
+    class Fake(torch.nn.Module):
+        embed_dim = 384
+
+    monkeypatch.setattr(torch.hub, "load", lambda *a, **k: calls.append((a, k)) or Fake())
+    model, dim = models.build_backbone("dinov2_vits14", pretrained=True)
+    assert dim == 384 and isinstance(model, Fake)
+    assert calls == [(("facebookresearch/dinov2:main", "dinov2_vits14"), {"pretrained": True, "trust_repo": True})]
+    assert models.backbone_family("dinov2_vitb14") == "dinov2"
+    with pytest.raises(ValueError):
+        models.build_backbone("dinov2_vitb14", pretrained=False)
+
+
+def test_paired_comparison_against_a_fixed_series():
+    from sslhist.report import paired_comparison
+    rows = []
+    for split in range(3):
+        for seed in range(3):
+            for b, m, auroc in [("resnet50", "simclr", 0.80), ("resnet18", "simclr", 0.70), ("dinov2_vits14", "frozen", 0.90)]:
+                rows.append(dict(dataset="pcam", backbone=b, method=m, split=split, seed=seed, label_frac=0.01,
+                                 auroc=auroc + 0.001 * seed, accuracy=0.7, f1=0.6, ece=0.1, brier=0.2))
+    raw = pd.DataFrame(rows)
+    by_series = paired_comparison(raw, "resnet50:simclr")      # every series vs ResNet-50 SimCLR
+    got = {(r.backbone, r.method): round(r.auroc_diff_mean, 6) for r in by_series.itertuples()}
+    assert got == {("dinov2_vits14", "frozen"): 0.10, ("resnet18", "simclr"): -0.10}
+    assert (by_series["n_pairs"] == 9).all() and (by_series["auroc_wilcoxon_p"] < 0.01).all()
+    same_method = paired_comparison(raw, "resnet18")           # same SSL method only: no frozen ResNet-18
+    assert set(zip(same_method.backbone, same_method.method)) == {("resnet50", "simclr")}

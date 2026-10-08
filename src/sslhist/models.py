@@ -31,6 +31,28 @@ def _vit_s_16(pretrained: bool) -> Tuple[nn.Module, int]:
     return m, m.hidden_dim
 
 
+# DINOv2 (E3): official checkpoints from facebookresearch/dinov2 via torch.hub, used frozen.
+# The branch is given explicitly so torch.hub does not need to probe GitHub for it.
+DINOV2_HUB = "facebookresearch/dinov2:main"
+
+
+def _dinov2(name: str, pretrained: bool) -> Tuple[nn.Module, int]:
+    if not pretrained:
+        raise ValueError(f"{name} is only used with its pretrained weights (method 'frozen').")
+    import torch
+    m = torch.hub.load(DINOV2_HUB, name, pretrained=True, trust_repo=True)
+    # forward(x) returns the normalised CLS token (embed_dim); inputs must be a multiple of 14 px
+    return m, int(m.embed_dim)
+
+
+def _dinov2_tiny_test(pretrained: bool) -> Tuple[nn.Module, int]:
+    """Stand-in for DINOv2 in the CPU tests (no download): a tiny ViT on 28x28 inputs."""
+    m = VisionTransformer(image_size=28, patch_size=14, num_layers=1, num_heads=2,
+                          hidden_dim=32, mlp_dim=64)
+    m.heads = nn.Identity()
+    return m, m.hidden_dim
+
+
 def _vit_tiny_test(pretrained: bool) -> Tuple[nn.Module, int]:
     """Very small ViT used only by the CPU smoke tests (32x32 input)."""
     m = VisionTransformer(image_size=32, patch_size=8, num_layers=2, num_heads=2,
@@ -45,6 +67,9 @@ _BUILDERS = {
     "vit_b_16": _vit_b_16,
     "vit_s_16": _vit_s_16,
     "vit_tiny_test": _vit_tiny_test,
+    "dinov2_vits14": lambda p: _dinov2("dinov2_vits14", p),
+    "dinov2_vitb14": lambda p: _dinov2("dinov2_vitb14", p),
+    "dinov2_tiny_test": _dinov2_tiny_test,
 }
 
 
@@ -56,6 +81,8 @@ def build_backbone(name: str, pretrained: bool = False) -> Tuple[nn.Module, int]
 
 def backbone_family(name: str) -> str:
     """Protocol family: batch sizes, image sizes and SSL head widths depend on it."""
+    if name.startswith("dinov2"):
+        return "dinov2"
     if name.startswith("resnet"):
         return "resnet"
     if name.startswith("vit"):

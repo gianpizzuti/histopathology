@@ -36,6 +36,8 @@ def parse_log(text: str) -> dict:
         info["epoch"], info["epochs"] = epochs[-1][0], epochs[-1][1]
     if "[PROBE]" in seg or (epochs and epochs[-1][0] == epochs[-1][1]):
         info["phase"] = "probes / saving"
+    elif "[FROZEN]" in seg:
+        info["phase"] = "features (frozen)"
     else:
         info["phase"] = "SSL pretraining"
     return info
@@ -104,6 +106,9 @@ def main() -> int:
             left = max(left, 0.5)
             remaining += left
             eta = f"~{fmt_min(left)} left"
+        elif info["phase"] != "SSL pretraining":  # frozen encoder or probes: a few minutes at most
+            remaining += 2.0
+            eta = ""
         else:
             unknown += 1
             eta = "first epoch in progress"

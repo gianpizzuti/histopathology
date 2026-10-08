@@ -1,9 +1,11 @@
-"""SimCLR and BYOL pretraining, ported from the legacy notebooks.
+"""SimCLR and BYOL pretraining, ported from the legacy notebooks, and Barlow
+Twins (E3) trained with the same loop and optimiser.
 
 The training loops keep the legacy details: Adam without weight decay, fp16
 autocast + GradScaler, NT-Xent computed in fp32 outside autocast (SimCLR),
 BYOL loss inside autocast, EMA update of target encoder + projector after
-every step, non-finite batches skipped, ``drop_last=True``.
+every step, non-finite batches skipped, ``drop_last=True``. The Barlow Twins
+loss is also computed in fp32 outside autocast.
 """
 import copy
 import time
@@ -95,6 +97,40 @@ class BYOL(nn.Module):
         return 2 - 2 * (p * z).sum(dim=1).mean()
 
 
+class BarlowTwins(nn.Module):
+    """Zbontar et al., 2021: backbone + 3-layer projector (Linear-BN-ReLU x2, Linear)."""
+
+    def __init__(self, backbone_name: str, proj_dim: int, hidden_dim: int):
+        super().__init__()
+        self.backbone, feat_dim = build_backbone(backbone_name, pretrained=False)
+        self.projector = nn.Sequential(
+            nn.Linear(feat_dim, hidden_dim, bias=False),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim, hidden_dim, bias=False),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim, proj_dim, bias=False),
+        )
+
+    def forward(self, x):
+        return self.projector(self.backbone(x))
+
+
+def barlow_twins_loss_fp32(z1: torch.Tensor, z2: torch.Tensor, lambd: float = 0.0051,
+                           eps: float = 1e-5) -> torch.Tensor:
+    """sum_i (1 - C_ii)^2 + lambd * sum_{i!=j} C_ij^2, with C the cross-correlation
+    of the batch-standardised embeddings."""
+    z1, z2 = z1.float(), z2.float()
+    n = z1.size(0)
+    z1 = (z1 - z1.mean(0)) / (z1.std(0, unbiased=False) + eps)
+    z2 = (z2 - z2.mean(0)) / (z2.std(0, unbiased=False) + eps)
+    c = z1.T @ z2 / n
+    on_diag = (torch.diagonal(c) - 1).pow(2).sum()
+    off_diag = c.pow(2).sum() - torch.diagonal(c).pow(2).sum()
+    return on_diag + lambd * off_diag
+
+
 def pretrain_ssl(
     method: str,
     backbone_name: str,
@@ -120,6 +156,8 @@ def pretrain_ssl(
         model = build_simclr(backbone_name, head_cfg["proj_dim"], head_cfg["hidden_dim"])
     elif method == "byol":
         model = BYOL(backbone_name, head_cfg["proj_dim"], head_cfg["hidden_dim"], head_cfg["ema"])
+    elif method == "barlow":
+        model = BarlowTwins(backbone_name, head_cfg["proj_dim"], head_cfg["hidden_dim"])
     else:
         raise ValueError(f"Unknown SSL method: {method}")
 
@@ -143,6 +181,10 @@ def pretrain_ssl(
                 with torch.amp.autocast("cuda", enabled=amp):
                     z1, z2 = model(x1), model(x2)
                 loss = nt_xent_loss_fp32(z1, z2, temperature=0.5)
+            elif method == "barlow":
+                with torch.amp.autocast("cuda", enabled=amp):
+                    z1, z2 = model(x1), model(x2)
+                loss = barlow_twins_loss_fp32(z1, z2, lambd=float(head_cfg["lambd"]))
             else:
                 with torch.amp.autocast("cuda", enabled=amp):
                     p1, p2, t1, t2 = model(x1, x2)
@@ -175,5 +217,6 @@ def pretrain_ssl(
         history["sec_per_step"] = (t_last - t_warm) / (history["steps"] - warmup_steps)
     else:
         history["sec_per_step"] = sum(history["epoch_time_s"]) / max(1, history["steps"])
-    backbone = model[0] if method == "simclr" else model.online_encoder
+    backbone = {"simclr": lambda: model[0], "byol": lambda: model.online_encoder,
+                "barlow": lambda: model.backbone}[method]()
     return backbone, history

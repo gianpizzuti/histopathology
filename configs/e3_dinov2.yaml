@@ -1,0 +1,11 @@
+# E3a - DINOv2 frozen encoders (Reviewer 2, item 3): official ViT-S/14 and ViT-B/14
+# checkpoints, no SSL pretraining on our data; same splits, labelled subsets and linear
+# probe as E1/E2 (n=9 at 1/5/10%). Images use ImageNet normalisation (DINOv2 training).
+# Weights come from torch.hub: run scripts/prefetch_weights.py once before launching.
+inherit: base.yaml
+experiment: e3_dinov2
+
+grid:
+  datasets: [pcam, panda]
+  methods: [frozen]
+  backbones: [dinov2_vits14, dinov2_vitb14]

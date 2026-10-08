@@ -45,7 +45,12 @@ def subset_seed(split_id: int, seed: int) -> int:
 # -----------------------
 # Transforms (legacy)
 # -----------------------
-def ssl_transform(img_size: int) -> transforms.Compose:
+# Normalisation of the conference protocol. Pretrained encoders used frozen (DINOv2)
+# get their own statistics through ``families.<family>.normalize`` in the config.
+LEGACY_NORM = ((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+
+
+def ssl_transform(img_size: int, norm=LEGACY_NORM) -> transforms.Compose:
     return transforms.Compose([
         transforms.RandomResizedCrop(img_size, scale=(0.6, 1.0)),
         transforms.RandomHorizontalFlip(),
@@ -53,22 +58,22 @@ def ssl_transform(img_size: int) -> transforms.Compose:
         transforms.ColorJitter(0.2, 0.2, 0.2, 0.1),
         transforms.RandomGrayscale(p=0.1),
         transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        transforms.Normalize(*norm),
     ])
 
 
-def sup_transform(img_size: int) -> transforms.Compose:
+def sup_transform(img_size: int, norm=LEGACY_NORM) -> transforms.Compose:
     return transforms.Compose([
         transforms.Resize((img_size, img_size)),
         transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        transforms.Normalize(*norm),
     ])
 
 
 class TwoViewDataset(Dataset):
-    def __init__(self, image_paths: List[str], img_size: int):
+    def __init__(self, image_paths: List[str], img_size: int, norm=LEGACY_NORM):
         self.image_paths = image_paths
-        self.t = ssl_transform(img_size)
+        self.t = ssl_transform(img_size, norm)
 
     def __len__(self):
         return len(self.image_paths)
@@ -79,11 +84,11 @@ class TwoViewDataset(Dataset):
 
 
 class LabeledDataset(Dataset):
-    def __init__(self, image_paths: List[str], labels: List[int], img_size: int):
+    def __init__(self, image_paths: List[str], labels: List[int], img_size: int, norm=LEGACY_NORM):
         assert len(image_paths) == len(labels)
         self.image_paths = image_paths
         self.labels = labels
-        self.t = sup_transform(img_size)
+        self.t = sup_transform(img_size, norm)
 
     def __len__(self):
         return len(self.image_paths)
@@ -115,13 +120,13 @@ class DataSource:
     def labels_all(self) -> np.ndarray:
         return self.meta["label"].to_numpy(dtype=np.int64)
 
-    def make_ssl_dataset(self, indices: np.ndarray, img_size: int) -> Dataset:
+    def make_ssl_dataset(self, indices: np.ndarray, img_size: int, norm=LEGACY_NORM) -> Dataset:
         paths = self.paths
-        return TwoViewDataset([paths[i] for i in indices], img_size)
+        return TwoViewDataset([paths[i] for i in indices], img_size, norm)
 
-    def make_sup_dataset(self, indices: np.ndarray, img_size: int) -> Dataset:
+    def make_sup_dataset(self, indices: np.ndarray, img_size: int, norm=LEGACY_NORM) -> Dataset:
         paths, labels = self.paths, self.labels_all()
-        return LabeledDataset([paths[i] for i in indices], [int(labels[i]) for i in indices], img_size)
+        return LabeledDataset([paths[i] for i in indices], [int(labels[i]) for i in indices], img_size, norm)
 
 
 def _subsample(df: pd.DataFrame, sample_frac: float) -> pd.DataFrame:
@@ -198,3 +203,9 @@ def label_subset(train_indices: np.ndarray, labels: np.ndarray, frac: float, see
     sss = StratifiedShuffleSplit(n_splits=1, train_size=k, random_state=seed)
     sel_rel, _ = next(sss.split(np.zeros(n), labels[train_indices]))
     return train_indices[sel_rel]
+
+
+def norm_from_cfg(fam: dict):
+    """(mean, std) for a protocol family; the conference normalisation unless overridden."""
+    n = fam.get("normalize")
+    return (tuple(n["mean"]), tuple(n["std"])) if n else LEGACY_NORM

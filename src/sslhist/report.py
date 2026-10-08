@@ -24,17 +24,25 @@ def summarize(raw: pd.DataFrame, metrics: Sequence[str] = METRICS) -> pd.DataFra
 
 
 def paired_comparison(raw: pd.DataFrame, reference: str, metrics: Sequence[str] = METRICS) -> pd.DataFrame:
-    """For every backbone != ``reference``: mean/std of (backbone - reference) over runs
-    matched on dataset, method, split, seed and label fraction, with a two-sided
-    Wilcoxon signed-rank p-value. With n=9 pairs the smallest possible p is 2/512."""
-    ref = raw[raw.backbone == reference].set_index(PAIR_COLS)
+    """Mean/std of (series - reference) over runs matched on dataset, split, seed and label
+    fraction (same labelled subsets), with a two-sided Wilcoxon signed-rank p-value; with
+    n=9 pairs the smallest possible p is 2/512.
+
+    ``reference`` is either a backbone (``resnet18``: every other backbone is compared with
+    it under the same SSL method) or ``backbone:method`` (``resnet50:simclr``: every other
+    (backbone, method) series is compared with that single series, e.g. frozen DINOv2)."""
+    ref_backbone, _, ref_method = reference.partition(":")
+    keys = ["dataset", "split", "seed", "label_frac"] + ([] if ref_method else ["method"])
+    is_ref = (raw.backbone == ref_backbone) & ((raw.method == ref_method) if ref_method else True)
+    ref = raw[is_ref].set_index(keys)
     rows = []
-    for b in sorted(set(raw.backbone) - {reference}):
-        other = raw[raw.backbone == b].set_index(PAIR_COLS)
-        joined = other[list(metrics)].join(ref[list(metrics)], rsuffix="_ref", how="inner")
-        for (ds, meth, frac), grp in joined.groupby(level=["dataset", "method", "label_frac"]):
+    for (b, meth), other in raw[~is_ref].groupby(["backbone", "method"]):
+        if not ref_method and b == ref_backbone:
+            continue
+        joined = other.set_index(keys)[list(metrics)].join(ref[list(metrics)], rsuffix="_ref", how="inner")
+        for (ds, frac), grp in joined.groupby(level=["dataset", "label_frac"]):
             row = {"dataset": ds, "method": meth, "label_frac": frac, "backbone": b,
-                   "reference": reference, "n_pairs": len(grp)}
+                   "reference": reference if ref_method else f"{ref_backbone}:{meth}", "n_pairs": len(grp)}
             for m in metrics:
                 d = (grp[m] - grp[f"{m}_ref"]).to_numpy()
                 row[f"{m}_diff_mean"] = float(np.mean(d))
@@ -44,7 +52,7 @@ def paired_comparison(raw: pd.DataFrame, reference: str, metrics: Sequence[str] 
                 except ValueError:
                     row[f"{m}_wilcoxon_p"] = float("nan")
             rows.append(row)
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows).sort_values(["dataset", "backbone", "method", "label_frac"]) if rows else pd.DataFrame()
 
 
 def _fmt(mean: float, std: float, digits: int = 3) -> str:

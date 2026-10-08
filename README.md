@@ -7,8 +7,8 @@ notebooks are kept unchanged in `notebooks/legacy/`. New experiments use the
 
 ```
 configs/            base.yaml (conference protocol) + one YAML per experiment
-src/sslhist/        data, models, ssl (SimCLR/BYOL), probe, metrics, runner, report, plotting
-scripts/            check_setup.py · run_unit.py · launch.py · status.py · aggregate.py · make_splits.py
+src/sslhist/        data, models, ssl (SimCLR/BYOL/Barlow Twins), probe, metrics, runner, report, plotting
+scripts/            check_setup.py · run_unit.py · launch.py · status.py · aggregate.py · make_splits.py · prefetch_weights.py
 tests/              protocol equivalence with the notebooks + CPU smoke tests
 results/lnbi/       committed: per-run JSON, summary CSV/LaTeX, PDF figures
 artifacts/          NOT committed: encoders, features, logs
@@ -100,8 +100,20 @@ watch -n 60 python scripts/status.py --config configs/e1_vit_matched.yaml   # re
 python scripts/aggregate.py --config configs/e1_vit_matched.yaml --reference resnet18
 #    experiments on the same splits can be analysed together (written to <experiment>/with_<other>/):
 python scripts/aggregate.py --config configs/e2_resnet50.yaml --include e1_vit_matched --reference resnet18
+#    --reference backbone:method compares every series with one fixed series (e.g. frozen DINOv2):
+python scripts/aggregate.py --config configs/e3_dinov2.yaml --include e1_vit_matched e2_resnet50 e3_barlow \
+    --reference resnet18 resnet50:simclr
 git add results/lnbi/e1_vit_matched && git commit -m "E1 results" && git push
 ```
+
+Experiments so far (one config each, same splits and labelled subsets):
+
+| Config | What | Units |
+|---|---|---|
+| `e1_vit_matched.yaml` | ViT-B/16 and ResNet-18, SimCLR + BYOL | 72 |
+| `e2_resnet50.yaml` | ResNet-50, SimCLR + BYOL | 36 |
+| `e3_dinov2.yaml` | DINOv2 ViT-S/14 and ViT-B/14, frozen (method `frozen`, ImageNet normalisation); run `python scripts/prefetch_weights.py` once first | 36 |
+| `e3_barlow.yaml` | ResNet-18, Barlow Twins | 18 |
 
 A *unit* is one SSL pretraining (dataset, method, backbone, split, seed) followed
 by the linear probes at 1/5/10% labels. Logs: `artifacts/<experiment>/logs/<unit>.log`.
