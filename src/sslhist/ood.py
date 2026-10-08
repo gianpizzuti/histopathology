@@ -273,7 +273,8 @@ def run_ood_unit(cfg: dict, unit: Unit, force: bool = False) -> Optional[dict]:
             src_row = json.load(f)
         if int(src_row["img_size"]) != img:
             raise RuntimeError(f"{unit.tag}: image size {img} here, {src_row['img_size']} in {source_exp}")
-        encoder = src_row["encoder"]
+        # results written before E3 have no "encoder" field: they are all SSL from scratch
+        encoder = src_row.get("encoder", "SSL from scratch")
         val_y = src["val_y"]
         set_seed(rs)  # as run_unit before building the encoder (only matters for randomly initialised test stand-ins)
         backbone = load_encoder(cfg, source_exp, unit).to(device)

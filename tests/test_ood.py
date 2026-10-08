@@ -85,6 +85,11 @@ def e6_setup(tmp_path, tiny_config):
         for method, backbone in [("simclr", "resnet18"), ("frozen", "dinov2_tiny_test")]:
             for seed in (0, 1):
                 run_unit(src_cfg, Unit(ds, method, backbone, 0, seed))
+    # E1/E2 result files were written before the "encoder" field existed
+    for p in (tmp_path / "results" / "src_ssl" / "raw").glob("*__simclr__*.json"):
+        row = json.loads(p.read_text())
+        del row["encoder"]
+        p.write_text(json.dumps(row))
 
     e6 = dict(base, experiment="e6_test", kind="ood")
     e6["protocol"] = dict(src["protocol"])
@@ -123,6 +128,7 @@ def test_e6_end_to_end(e6_setup, subprocess_env):
                 assert row["source_experiment"] == "trained here" and row["encoder"] == "supervised from scratch"
             else:
                 assert row["source_experiment"] == "src_ssl"
+                assert row["encoder"] == {"simclr": "SSL from scratch", "frozen": "pretrained, frozen"}[u.method]
                 assert row["encoder_check_rel_diff"] < 0.05 and row["probe_check_max_abs_diff"] < 1e-4
                 # same labelled subset and validation set as the source run
                 src = json.loads((exp_results_dir(cfg).parent / "src_ssl" / "raw" /
