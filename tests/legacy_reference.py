@@ -104,3 +104,24 @@ def load_panda_paths_labels(train_csv: str, resized_dir: str, sample_frac: float
     labels = [1 if int(g) >= 2 else 0 for g in df["isup_grade"].astype(int).tolist()]
     paths = df["image_path"].tolist()
     return paths, labels
+
+
+# Copied verbatim from notebooks/legacy/08_federated_simclr_pcam.ipynb (federated diagnostic):
+# ECE of the predicted class, a different definition from compute_ece above.
+def expected_calibration_error(probs, labels, n_bins=15):
+    probs = np.asarray(probs)
+    labels = np.asarray(labels).astype(int)
+    confidences = np.maximum(probs, 1 - probs)
+    preds = (probs >= 0.5).astype(int)
+
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    ece = 0.0
+    for i in range(n_bins):
+        lo, hi = bins[i], bins[i+1]
+        mask = (confidences > lo) & (confidences <= hi)
+        if mask.sum() == 0:
+            continue
+        acc_bin = (preds[mask] == labels[mask]).mean()
+        conf_bin = confidences[mask].mean()
+        ece += (mask.sum() / len(labels)) * abs(acc_bin - conf_bin)
+    return float(ece)

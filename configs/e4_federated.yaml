@@ -1,0 +1,25 @@
+# E4 - Federated SimCLR (FedAvg) on PCam, with the protocol of E1: same encoder, loss,
+# augmentations, optimiser, AMP, batch size, splits, seeds, labelled subsets and probe as
+# the centralised ResNet-18 SimCLR of E1, which is the paired reference
+# (aggregate with --include e1_vit_matched:resnet18:simclr --reference resnet18:simclr).
+# Replaces the federated diagnostic of the conference paper (notebook 08), whose evaluation
+# differed from the benchmark and whose "non-IID" partition was in fact IID.
+#
+# Methods: <ssl>-fed-k<clients>-<iid | a<alpha>>. Label skew: each client's label
+# distribution ~ Dir(alpha), equal client sizes (src/sslhist/federated.py).
+inherit: base.yaml
+experiment: e4_federated
+
+federated:
+  local_epochs: 1   # rounds = ssl_epochs / local_epochs = 10: the data are seen as often as in E1
+
+grid:
+  datasets: [pcam]
+  backbones: [resnet18]
+  methods:
+    - simclr-fed-k5-iid
+    - simclr-fed-k5-a0.5
+    - simclr-fed-k5-a0.1
+    - simclr-fed-k10-iid
+    - simclr-fed-k10-a0.5
+    - simclr-fed-k10-a0.1

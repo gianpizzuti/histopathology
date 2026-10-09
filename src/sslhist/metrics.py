@@ -26,6 +26,24 @@ def compute_ece(probs: np.ndarray, labels: np.ndarray, n_bins: int = 15) -> floa
     return float(ece)
 
 
+def compute_ece_toplabel(probs: np.ndarray, labels: np.ndarray, n_bins: int = 15) -> float:
+    """ECE on the confidence of the predicted class, max(p, 1-p), vs its accuracy: the
+    definition of notebook 08 (federated diagnostic of the conference paper). Not the
+    same number as ``compute_ece``, which every other experiment uses."""
+    probs = np.asarray(probs)
+    labels = np.asarray(labels).astype(int)
+    conf = np.maximum(probs, 1 - probs)
+    preds = (probs >= 0.5).astype(int)
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    ece = 0.0
+    for i in range(n_bins):
+        m = (conf > bins[i]) & (conf <= bins[i + 1])
+        if m.sum() == 0:
+            continue
+        ece += (m.sum() / len(labels)) * abs((preds[m] == labels[m]).mean() - conf[m].mean())
+    return float(ece)
+
+
 def compute_metrics_binary(probs: np.ndarray, labels: np.ndarray, thr: float = 0.5) -> Dict[str, float]:
     probs = sanitize_np_probs(probs)
     labels = np.asarray(labels).reshape(-1).astype(int)

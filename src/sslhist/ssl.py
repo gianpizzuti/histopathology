@@ -131,6 +131,37 @@ def barlow_twins_loss_fp32(z1: torch.Tensor, z2: torch.Tensor, lambd: float = 0.
     return on_diag + lambd * off_diag
 
 
+def build_ssl_model(method: str, backbone_name: str, head_cfg: dict) -> nn.Module:
+    if method == "simclr":
+        return build_simclr(backbone_name, head_cfg["proj_dim"], head_cfg["hidden_dim"])
+    if method == "byol":
+        return BYOL(backbone_name, head_cfg["proj_dim"], head_cfg["hidden_dim"], head_cfg["ema"])
+    if method == "barlow":
+        return BarlowTwins(backbone_name, head_cfg["proj_dim"], head_cfg["hidden_dim"])
+    raise ValueError(f"Unknown SSL method: {method}")
+
+
+def ssl_loss(method: str, model: nn.Module, x1: torch.Tensor, x2: torch.Tensor, amp: bool,
+             head_cfg: dict) -> torch.Tensor:
+    """Loss of one batch of view pairs, as in the legacy loops (SimCLR/Barlow loss in fp32)."""
+    if method == "simclr":
+        with torch.amp.autocast("cuda", enabled=amp):
+            z1, z2 = model(x1), model(x2)
+        return nt_xent_loss_fp32(z1, z2, temperature=0.5)
+    if method == "barlow":
+        with torch.amp.autocast("cuda", enabled=amp):
+            z1, z2 = model(x1), model(x2)
+        return barlow_twins_loss_fp32(z1, z2, lambd=float(head_cfg["lambd"]))
+    with torch.amp.autocast("cuda", enabled=amp):
+        p1, p2, t1, t2 = model(x1, x2)
+        return BYOL.loss_fn(p1, t2) + BYOL.loss_fn(p2, t1)
+
+
+def ssl_backbone(method: str, model: nn.Module) -> nn.Module:
+    return {"simclr": lambda: model[0], "byol": lambda: model.online_encoder,
+            "barlow": lambda: model.backbone}[method]()
+
+
 def pretrain_ssl(
     method: str,
     backbone_name: str,
@@ -152,16 +183,7 @@ def pretrain_ssl(
     ``max_steps`` stops early (timing runs only).
     """
     method = method.lower()
-    if method == "simclr":
-        model = build_simclr(backbone_name, head_cfg["proj_dim"], head_cfg["hidden_dim"])
-    elif method == "byol":
-        model = BYOL(backbone_name, head_cfg["proj_dim"], head_cfg["hidden_dim"], head_cfg["ema"])
-    elif method == "barlow":
-        model = BarlowTwins(backbone_name, head_cfg["proj_dim"], head_cfg["hidden_dim"])
-    else:
-        raise ValueError(f"Unknown SSL method: {method}")
-
-    model = model.to(device)
+    model = build_ssl_model(method, backbone_name, head_cfg).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     dl = DataLoader(ssl_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers,
                     pin_memory=(device.type == "cuda"), drop_last=True)
@@ -177,18 +199,7 @@ def pretrain_ssl(
             x1 = x1.to(device, non_blocking=True)
             x2 = x2.to(device, non_blocking=True)
             opt.zero_grad(set_to_none=True)
-            if method == "simclr":
-                with torch.amp.autocast("cuda", enabled=amp):
-                    z1, z2 = model(x1), model(x2)
-                loss = nt_xent_loss_fp32(z1, z2, temperature=0.5)
-            elif method == "barlow":
-                with torch.amp.autocast("cuda", enabled=amp):
-                    z1, z2 = model(x1), model(x2)
-                loss = barlow_twins_loss_fp32(z1, z2, lambd=float(head_cfg["lambd"]))
-            else:
-                with torch.amp.autocast("cuda", enabled=amp):
-                    p1, p2, t1, t2 = model(x1, x2)
-                    loss = BYOL.loss_fn(p1, t2) + BYOL.loss_fn(p2, t1)
+            loss = ssl_loss(method, model, x1, x2, amp, head_cfg)
             if not torch.isfinite(loss):
                 history["skipped_batches"] += 1
                 continue
@@ -217,6 +228,4 @@ def pretrain_ssl(
         history["sec_per_step"] = (t_last - t_warm) / (history["steps"] - warmup_steps)
     else:
         history["sec_per_step"] = sum(history["epoch_time_s"]) / max(1, history["steps"])
-    backbone = {"simclr": lambda: model[0], "byol": lambda: model.online_encoder,
-                "barlow": lambda: model.backbone}[method]()
-    return backbone, history
+    return ssl_backbone(method, model), history

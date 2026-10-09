@@ -24,6 +24,13 @@ SERIES_COLORS = {
     ("frozen", "dinov2_vitb14"): "black",
     ("sup_scratch", "resnet18"): "#e6ab02",
     ("sup_imagenet", "resnet18"): "#1b9e77",
+    # E4 federated SimCLR: blues (5 clients) and oranges (10 clients), darker = more label skew
+    ("simclr-fed-k5-iid", "resnet18"): "#9ecae1",
+    ("simclr-fed-k5-a0.5", "resnet18"): "#4292c6",
+    ("simclr-fed-k5-a0.1", "resnet18"): "#08519c",
+    ("simclr-fed-k10-iid", "resnet18"): "#fdae6b",
+    ("simclr-fed-k10-a0.5", "resnet18"): "#f16913",
+    ("simclr-fed-k10-a0.1", "resnet18"): "#a63603",
 }
 # Supervised baselines (E6) are dashed, so they stand out from the SSL encoders
 METHOD_LINESTYLE = {"sup_scratch": "--", "sup_imagenet": "--"}
@@ -78,7 +85,20 @@ def _save(fig, out_pdf) -> None:
 
 
 def series_label(method: str, backbone: str) -> str:
+    from .federated import fed_label, parse_fed_method
+    if parse_fed_method(method):
+        return f"{fed_label(method)} + {backbone}"
     return f"{_LEGEND_METHOD.get(method, method.upper())} + {backbone}"
+
+
+def method_label(method: str) -> str:
+    """Method name in the LaTeX tables."""
+    from .federated import parse_fed_method
+    f = parse_fed_method(method)
+    if f:
+        part = "IID" if f["partition"] == "iid" else f"Dir $\\alpha$={f['alpha']:g}"
+        return f"Fed-{METHOD_STYLES[f['ssl']]['label']} ({f['clients']} clients, {part})"
+    return METHOD_STYLES.get(method, {}).get("label", method)
 
 
 def series_color(method: str, backbone: str, used: dict) -> str:

@@ -22,8 +22,15 @@ for _var in ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"]:
 
 from sslhist.config import load_config  # noqa: E402
 from sslhist.io import Unit  # noqa: E402
+from sslhist.federated import parse_fed_method  # noqa: E402
 from sslhist.ood import SUPERVISED, run_ood_unit  # noqa: E402
 from sslhist.runner import run_unit  # noqa: E402
+
+
+def method_name(m: str) -> str:
+    if m in ["simclr", "byol", "barlow", "frozen", *SUPERVISED] or parse_fed_method(m):
+        return m
+    raise argparse.ArgumentTypeError(f"unknown method '{m}'")
 
 
 def main() -> int:
@@ -33,7 +40,9 @@ def main() -> int:
     ap.add_argument("--config", required=True)
     ap.add_argument("--paths", default=None, help="paths YAML (default: configs/paths.yaml)")
     ap.add_argument("--dataset", required=True, choices=["pcam", "panda"])
-    ap.add_argument("--method", required=True, choices=["simclr", "byol", "barlow", "frozen", *SUPERVISED])
+    ap.add_argument("--method", required=True, type=method_name,
+                    help="simclr, byol, barlow, frozen, sup_scratch, sup_imagenet (E6) or a federated "
+                         "method (E4), e.g. simclr-fed-k10-a0.1")
     ap.add_argument("--backbone", required=True)
     ap.add_argument("--split", type=int, required=True)
     ap.add_argument("--seed", type=int, required=True)

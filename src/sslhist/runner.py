@@ -16,6 +16,7 @@ from torch.utils.data import DataLoader
 
 from . import data as D
 from .config import family_cfg
+from .federated import parse_fed_method, pretrain_federated
 from .io import Unit, exp_artifacts_dir, frac_tag, result_path, unit_complete, write_json
 from .metrics import compute_metrics_binary
 from .models import build_backbone
@@ -50,6 +51,7 @@ def run_unit(cfg: dict, unit: Unit, force: bool = False, timing_steps: Optional[
     img = int(fam["img_size"][unit.dataset])
     norm = D.norm_from_cfg(fam)
     frozen = unit.method == "frozen"
+    fed = parse_fed_method(unit.method)  # E4: federated pretraining
     rs, ss = D.run_seed(unit.split, unit.seed), D.subset_seed(unit.split, unit.seed)
     log("=" * 90)
     log(f"[RUN] {unit.tag} img={img} n_universe={len(ds)} n_tr={len(tr_idx)} n_va={len(va_idx)} "
@@ -69,13 +71,21 @@ def run_unit(cfg: dict, unit: Unit, force: bool = False, timing_steps: Optional[
         log(f"[FROZEN] {unit.backbone}: pretrained encoder, no SSL pretraining")
     else:
         ssl_ds = ds.make_ssl_dataset(tr_idx, img_size=img, norm=norm)
-        backbone, hist = pretrain_ssl(
-            unit.method, unit.backbone, ssl_ds, fam[unit.method],
-            batch_size=int(fam["batch_ssl"]), epochs=int(prot["ssl_epochs"]), lr=float(prot["ssl_lr"]),
-            num_workers=nw, device=device, amp=amp,
-            # protocol.max_ssl_steps is only set by the quick check config (configs/check.yaml)
-            max_steps=timing_steps if timing_steps is not None else prot.get("max_ssl_steps"), log=log,
-        )
+        # protocol.max_ssl_steps is only set by the quick check config (configs/check.yaml)
+        max_steps = timing_steps if timing_steps is not None else prot.get("max_ssl_steps")
+        if fed:
+            backbone, hist = pretrain_federated(
+                unit.method, unit.backbone, ssl_ds, labels[tr_idx], fam[fed["ssl"]],
+                batch_size=int(fam["batch_ssl"]), epochs=int(prot["ssl_epochs"]),
+                local_epochs=int(cfg.get("federated", {}).get("local_epochs", 1)), lr=float(prot["ssl_lr"]),
+                num_workers=nw, device=device, amp=amp, partition_seed=rs, max_steps=max_steps, log=log,
+            )
+        else:
+            backbone, hist = pretrain_ssl(
+                unit.method, unit.backbone, ssl_ds, fam[unit.method],
+                batch_size=int(fam["batch_ssl"]), epochs=int(prot["ssl_epochs"]), lr=float(prot["ssl_lr"]),
+                num_workers=nw, device=device, amp=amp, max_steps=max_steps, log=log,
+            )
         steps_per_epoch = len(ssl_ds) // int(fam["batch_ssl"])
     ssl_time = time.time() - t0
     peak_mem = lambda: torch.cuda.max_memory_allocated() / 1024 ** 3 if device.type == "cuda" else 0.0  # noqa: E731
@@ -126,7 +136,7 @@ def run_unit(cfg: dict, unit: Unit, force: bool = False, timing_steps: Optional[
             "n_labeled": int(len(sub_idx)), "n_train": int(len(tr_idx)), "n_val": int(len(va_idx)),
             "img_size": img, "sample_frac": float(cfg["data"]["sample_frac"][unit.dataset]),
             "ssl_epochs": 0 if frozen else int(prot["ssl_epochs"]), "ssl_batch": int(fam.get("batch_ssl", 0)),
-            "encoder": "pretrained, frozen" if frozen else "SSL from scratch",
+            "encoder": "pretrained, frozen" if frozen else ("federated SSL from scratch" if fed else "SSL from scratch"),
             "normalize": "custom" if fam.get("normalize") else "legacy (0.5, 0.5)",
             "ssl_lr": float(prot["ssl_lr"]), "probe_epochs": int(prot["probe_epochs"]),
             "probe_lr": float(prot["probe_lr"]), "num_workers": nw,
@@ -135,6 +145,7 @@ def run_unit(cfg: dict, unit: Unit, force: bool = False, timing_steps: Optional[
             "ssl_final_loss": hist["epoch_loss"][-1] if hist["epoch_loss"] else float("nan"),
             "ssl_steps": hist["steps"], "ssl_skipped_batches": hist["skipped_batches"],
             "ssl_time_s": round(ssl_time, 1),
+            **hist.get("federated", {}),  # E4: clients, partition, client sizes and positive rates
         })
         ft = frac_tag(frac)
         probe_art[f"{ft}_subset_idx"] = sub_idx

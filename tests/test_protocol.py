@@ -62,3 +62,14 @@ def test_metrics_match_legacy():
         assert new["f1"] == old["f1"]
         assert new["ece"] == old["ece"]
         assert new["brier"] == old["brier"]
+
+
+def test_toplabel_ece_matches_notebook_08():
+    from sslhist.metrics import compute_ece, compute_ece_toplabel
+    rng = np.random.default_rng(1)
+    for _ in range(20):
+        y = rng.integers(0, 2, size=500)
+        p = np.clip(rng.beta(2, 2, size=500) + 0.3 * (y - 0.5), 0.001, 0.999)
+        assert compute_ece_toplabel(p, y) == L.expected_calibration_error(p, y)
+    # the two definitions are different numbers (why the conference federated ECE is not comparable)
+    assert compute_ece_toplabel(p, y) != compute_ece(p, y)

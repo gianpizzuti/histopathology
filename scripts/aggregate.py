@@ -23,6 +23,8 @@ Examples:
   python scripts/aggregate.py --config configs/e3_dinov2.yaml --include e1_vit_matched e2_resnet50 \
       --reference resnet50:simclr
   python scripts/aggregate.py --config configs/e6_ood.yaml --reference resnet18:sup_imagenet resnet18:sup_scratch
+  python scripts/aggregate.py --config configs/e4_federated.yaml --include e1_vit_matched:resnet18:simclr \
+      --reference resnet18:simclr
 """
 import argparse
 import sys
@@ -140,8 +142,10 @@ def main() -> int:
                          "(resnet50:simclr: every series vs that one); several allowed")
     ap.add_argument("--legacy-csv", nargs="*", default=[],
                     help="conference results_raw_*.csv to include as experiment 'conference'")
-    ap.add_argument("--include", nargs="*", default=[], metavar="EXPERIMENT",
-                    help="other experiments (folder names in results/lnbi) to analyse together with this one")
+    ap.add_argument("--include", nargs="*", default=[], metavar="EXPERIMENT[:BACKBONE:METHOD]",
+                    help="other experiments (folder names in results/lnbi) to analyse together with this one; "
+                         "experiment:backbone:method takes only that series (e.g. e1_vit_matched:resnet18:simclr). "
+                         "Only the datasets of this experiment are taken.")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -150,19 +154,29 @@ def main() -> int:
             ap.error("--include / --legacy-csv are not used with the E6 config")
         return aggregate_ood(cfg, args)
     exp_dir = exp_results_dir(cfg)
-    exps = [cfg["experiment"]] + args.include
-    raw = load_raw([exp_dir] + [resolve(cfg["results_dir"]) / e for e in args.include])
-    if raw.empty or not raw["experiment"].isin([cfg["experiment"]]).any():
+    raw = load_raw([exp_dir])
+    if raw.empty:
         print(f"No results found in {exp_dir / 'raw'}")
         return 1
-    missing = [e for e in args.include if not raw["experiment"].isin([e]).any()]
-    if missing:
-        print(f"No results found for included experiment(s): {missing}")
-        return 1
+    parts, exps = [raw], [cfg["experiment"]]
+    for inc in args.include:
+        exp, _, series = inc.partition(":")
+        backbone, _, method = series.partition(":")
+        r = load_raw([resolve(cfg["results_dir"]) / exp])
+        if not r.empty:
+            r = r[r.dataset.isin(raw.dataset.unique()) & ((r.backbone == backbone) if backbone else True)
+                  & ((r.method == method) if method else True)]
+        if r.empty:
+            print(f"No results found for included experiment/series: {inc}")
+            return 1
+        parts.append(r)
+        exps.append(exp)
+    raw = pd.concat(parts, ignore_index=True)
     if args.legacy_csv:
         raw = pd.concat([raw] + [load_legacy_csv(p) for p in args.legacy_csv], ignore_index=True)
 
-    out = exp_dir / ("with_" + "_".join(args.include)) if args.include else exp_dir
+    inc_tag = "_".join(e.replace(":", "-") for e in args.include)
+    out = exp_dir / f"with_{inc_tag}" if args.include else exp_dir
     out.mkdir(parents=True, exist_ok=True)
     raw.to_csv(out / "all_runs.csv", index=False)
     summary = summarize(raw)
@@ -185,7 +199,7 @@ def main() -> int:
 
     figs = out / "figures"
     figs.mkdir(exist_ok=True)
-    prefix = "_".join(exps)
+    prefix = "_".join([cfg["experiment"]] + ([inc_tag] if args.include else []))
     for ds in sorted(cur["dataset"].unique()):
         for m in METRICS:
             plot_label_efficiency(cur, ds, m, figs / f"{prefix}_{ds}_{m}.pdf")

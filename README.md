@@ -45,7 +45,7 @@ pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorc
 pip install -e ".[dev]" kaggle
 python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.device_count(), torch.cuda.get_device_name(0))"
 # expected: 2.6.0+cu124 True 4 NVIDIA H100 NVL
-pytest -q            # 32 passed, a few minutes; the tests never use a GPU
+pytest -q            # 39 passed, a few minutes; the tests never use a GPU
 ```
 
 Later sessions: `conda activate hist && cd /opt/scratch/labs/vap/gianluca/ssl-histo/histopathology`.
@@ -116,6 +116,7 @@ Experiments so far (one config each, same splits and labelled subsets):
 | `e2_resnet50.yaml` | ResNet-50, SimCLR + BYOL | 36 |
 | `e3_dinov2.yaml` | DINOv2 ViT-S/14 and ViT-B/14, frozen (method `frozen`, ImageNet normalisation); run `python scripts/prefetch_weights.py` once first | 36 |
 | `e3_barlow.yaml` | ResNet-18, Barlow Twins | 18 |
+| `e4_federated.yaml` | Federated SimCLR ResNet-18 on PCam (FedAvg; 5/10 clients; IID, Dirichlet α 0.5/0.1), paired with the centralised SimCLR of E1 (see below) | 54 |
 | `e6_ood.yaml` | OOD analysis PCam ↔ PANDA of all the encoders above + supervised ResNet-18 baselines (see below) | 198 |
 
 A *unit* is one SSL pretraining (dataset, method, backbone, split, seed) followed
@@ -127,6 +128,41 @@ Single unit by hand (e.g. to debug), or a timing test of its first 200 SSL steps
 python scripts/run_unit.py --gpu 2 --config configs/e1_vit_matched.yaml \
     --dataset pcam --method simclr --backbone vit_b_16 --split 0 --seed 0 --timing 200
 ```
+
+## E4: federated SimCLR
+
+Same protocol as the centralised ResNet-18 SimCLR of E1 (encoder, loss, augmentations,
+Adam, AMP, batch 128, splits, seeds, labelled subsets, probe), which is the paired
+reference: a federated unit differs from its E1 counterpart only by the federation
+(`src/sslhist/federated.py`):
+- the training part of the split is divided among K = 5 or 10 clients of equal size, IID or
+  with label skew (each client's label distribution ~ Dir(α·C·p), p = overall class proportions,
+  Hsu et al. 2019; α = 0.5 and 0.1). Labels define the partition only, never the training;
+- FedAvg (McMahan et al. 2017): each round every client trains 1 local epoch from the global model
+  (Adam, new optimiser state each round), then all parameters and buffers, BatchNorm statistics
+  included, are averaged weighted by client size; 10 rounds, so the data are seen as often as in E1;
+- methods are named `simclr-fed-k<K>-<iid|a<α>>`; the result files also hold the client sizes and
+  positive rates (`client_sizes`, `client_pos_rates`, `label_skew`).
+
+```bash
+python scripts/launch.py --config configs/e4_federated.yaml --gpus 2,3 --per-gpu 3 --dry-run   # 54 units
+python scripts/launch.py --config configs/e4_federated.yaml --gpus 2,3 --per-gpu 3 2>&1 | tee e4_launch.log
+python scripts/status.py --config configs/e4_federated.yaml
+# tables and figures with the centralised SimCLR of E1, paired comparison federated - centralised:
+python scripts/aggregate.py --config configs/e4_federated.yaml --include e1_vit_matched:resnet18:simclr \
+    --reference resnet18:simclr
+# control: the evaluation of notebook 08 vs ours on the same encoders (CPU, a few minutes)
+python scripts/legacy08_control.py --config configs/e4_federated.yaml --sources e1_vit_matched:resnet18:simclr e4_federated
+```
+
+Why E4 replaces the federated diagnostic of the conference paper (Table 3, notebook 08): its rows
+were not comparable with the centralised ones. Notebook 08 used another split (StratifiedKFold,
+1 split x 3 seeds), NT-Xent temperature 0.2, no image normalisation, 5 rounds, a probe on raw
+features with Adam lr 1e-3 and early stopping on a validation set, and the ECE of the predicted
+class (max(p, 1−p)) instead of the ECE of the positive-class probability used everywhere else;
+its "non-IID" partition sorted the images by label and then shuffled them, i.e. it was IID; the
+paper reports 3 clients, the notebook has 5. `scripts/legacy08_control.py` scores the same
+encoders with both evaluations (`results/lnbi/e4_federated/legacy08_control/`).
 
 ## E6: is OOD overconfidence specific to SSL?
 
