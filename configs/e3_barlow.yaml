@@ -1,0 +1,10 @@
+# E3b - Barlow Twins (Reviewer 2, item 3): ResNet-18 pretrained with Barlow Twins using
+# the same loop, optimiser, epochs, batch and augmentations as SimCLR/BYOL (resnet family
+# in base.yaml), then n=9 linear probes at 1/5/10%.
+inherit: base.yaml
+experiment: e3_barlow
+
+grid:
+  datasets: [pcam, panda]
+  methods: [barlow]
+  backbones: [resnet18]

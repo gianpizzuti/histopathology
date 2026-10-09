@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sslhist"
+version = "0.1.0"
+description = "Reliability of self-supervised learning in histopathology (LNBI extension experiments)"
+requires-python = ">=3.9"
+# torch/torchvision are not pinned here: install the build matching the server's
+# CUDA driver first (see README), then `pip install -e .`
+dependencies = [
+    "torch>=2.1",
+    "torchvision>=0.16",
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "scipy",
+    "matplotlib",
+    "pyyaml",
+    "pillow",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

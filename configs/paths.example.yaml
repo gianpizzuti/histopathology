@@ -1,0 +1,15 @@
+# Copy to configs/paths.yaml (git-ignored) and edit for your machine.
+# Use exactly the same Kaggle datasets as the conference runs: the universe and
+# the splits depend on the rows of train_labels.csv / train.csv and on which
+# PANDA PNGs exist.
+
+# Kaggle competition "histopathologic-cancer-detection": contains train_labels.csv and train/*.tif
+pcam_root: /opt/scratch/labs/vap/gianluca/ssl-histo/data/histopathologic-cancer-detection
+
+# Kaggle competition "prostate-cancer-grade-assessment": only train.csv is needed
+panda_train_csv: /opt/scratch/labs/vap/gianluca/ssl-histo/data/prostate-cancer-grade-assessment/train.csv
+
+# Resized PANDA dataset used in the conference runs: Kaggle xhlulu/panda-resized-train-data-512x512
+# (dataset id 615046, version 1101206):
+# folder with <image_id>.png. scripts/make_splits.py --dataset panda checks it against the paper.
+panda_images_dir: /opt/scratch/labs/vap/gianluca/ssl-histo/data/panda-resized/train_images/train_images
