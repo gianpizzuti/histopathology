@@ -45,7 +45,7 @@ pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorc
 pip install -e ".[dev]" kaggle
 python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.device_count(), torch.cuda.get_device_name(0))"
 # expected: 2.6.0+cu124 True 4 NVIDIA H100 NVL
-pytest -q            # 39 passed, a few minutes; the tests never use a GPU
+pytest -q            # 41 passed, a few minutes; the tests never use a GPU
 ```
 
 Later sessions: `conda activate hist && cd /opt/scratch/labs/vap/gianluca/ssl-histo/histopathology`.
@@ -207,6 +207,28 @@ calibration, confidence, detection), `summary.csv`, `summary.tex` + `summary_det
 split/seed/labelled subset, Wilcoxon), and in `figures/`: label-efficiency curves of the OOD metrics,
 `*_confidence_bars.pdf` (ID vs OOD MSP before/after scaling, 10% labels) and `*_msp_hist.pdf`
 (MSP distributions, from `artifacts/e6_ood/scores/`).
+
+## Probe robustness (E1-E4, E6)
+
+The protocol probe (AdamW lr 1e-4, 10 epochs, batch 256) fixes the epochs, so it gets
+20 updates at 1% of PCam and 10 at 1% of PANDA and stays close to its random
+initialisation at low label fractions. `scripts/probe_robustness.py` retrains the probe
+of every saved unit as an L2 logistic regression trained to convergence, C chosen by
+cross-validation on the labelled subset only (`src/sslhist/probe_variants.py`), on the
+same standardised features, labelled subsets and validation images, and recomputes the
+E6 scores (OOD confidence, temperature scaling) with it. CPU only, from `artifacts/`.
+
+```bash
+# 1. E6 must have saved the OOD features (runs of this version): re-run its SSL units (~10 min, GPU)
+python scripts/launch.py --config configs/e6_ood.yaml --methods simclr,byol,barlow,frozen --gpus 2,3 --per-gpu 4 --force
+# 2. the analysis (CPU, 16 processes)
+python scripts/probe_robustness.py --experiments e1_vit_matched e2_resnet50 e3_dinov2 e3_barlow e4_federated \
+    --ood-experiment e6_ood --workers 16
+```
+
+Outputs in `results/lnbi/probe_robustness/`: `summary.txt` (AUROC, ECE and mean |logit| per probe,
+whole validation set), `paired_vs_legacy.csv` (logreg − protocol probe on the same runs, Wilcoxon),
+`e6_summary.txt` (E6 scores per probe, with the supervised baselines), `figures/`.
 
 ## Outputs
 

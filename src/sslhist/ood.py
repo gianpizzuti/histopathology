@@ -310,6 +310,10 @@ def run_ood_unit(cfg: dict, unit: Unit, force: bool = False) -> Optional[dict]:
             f"probe max diff={checks['probe_check_max_abs_diff']:.2e} (source: {source_exp})")
 
     rows, scores = [], {"cal_pos": cal_pos, "eval_pos": eval_pos, "ood_idx": ood_idx, "val_y": val_y}
+    if unit.method not in SUPERVISED:
+        # OOD features of the saved encoder: other probes can be scored on OOD without the GPU
+        # (scripts/probe_robustness.py)
+        scores["ood_feats"] = ood_f.numpy().astype(np.float16)
     for frac, r in per_frac.items():
         full = compute_metrics_binary(logits_to_probs(r["val_logits"]), val_y)  # whole val, as E1-E3
         if source_exp and abs(full["auroc"] - src_row_auroc(cfg, source_exp, unit, frac)) > 1e-5:

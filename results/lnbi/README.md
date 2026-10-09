@@ -12,4 +12,5 @@ See the main README for the file formats.
 | `e3_barlow/` | ResNet-18 with Barlow Twins, same protocol as SimCLR/BYOL | R2.3 |
 | `e4_federated/` | Federated SimCLR ResNet-18 on PCam (FedAvg, 5/10 clients, IID and Dirichlet label skew α 0.5/0.1), paired with the centralised SimCLR of E1; `legacy08_control/`: conference federated evaluation vs ours | federated |
 | `e6_ood/` | OOD confidence PCam ↔ PANDA of the E1-E3 encoders vs supervised ResNet-18 (scratch, ImageNet), before/after temperature scaling | OOD mechanism |
+| `probe_robustness/` | E1-E4 and E6 with a converged, cross-validated logistic-regression probe vs the protocol probe | probe sensitivity |
 | `splits/` | universe, splits and labelled subsets as image ids | all |
